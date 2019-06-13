@@ -27,6 +27,7 @@ EXPAND_ME += EPICS_LIBCOM_DEVELOPMENT_FLAG
 
 INC += libComVersion.h
 
+include $(LIBCOM)/allocators/Makefile
 include $(LIBCOM)/as/Makefile
 include $(LIBCOM)/bucketLib/Makefile
 include $(LIBCOM)/calc/Makefile
