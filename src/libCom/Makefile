@@ -12,6 +12,7 @@ include $(TOP)/configure/CONFIG
 SRC = $(TOP)/src
 LIBCOM = $(SRC)/libCom
 
+include $(LIBCOM)/allocators/Makefile
 include $(LIBCOM)/as/Makefile
 include $(LIBCOM)/bucketLib/Makefile
 include $(LIBCOM)/calc/Makefile

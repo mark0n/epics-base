@@ -19,6 +19,30 @@ epicsUnitTestTest_SRCS += epicsUnitTestTest.c
 # Not much point running this on vxWorks or RTEMS...
 TESTS += epicsUnitTestTest
 
+TESTPROD_HOST += allocatorBlockTest
+allocatorBlockTest_SRCS += allocatorBlockTest
+# Note: we need to use the deprecated "-std=c++0x" here since the g++ 4.4.7
+# cross compiler for RTEMS used on Travis CI doesn't understand "-std=c++11".
+allocatorBlockTest_CXXFLAGS += -std=c++0x
+testHarness_SRCS += allocatorBlockTest.cpp
+TESTS += allocatorBlockTest
+
+TESTPROD_HOST += epicsMallocatorTest
+epicsMallocatorTest_SRCS += epicsMallocatorTest.cpp
+# Note: we need to use the deprecated "-std=c++0x" here since the g++ 4.4.7
+# cross compiler for RTEMS used on Travis CI doesn't understand "-std=c++11".
+epicsMallocatorTest_CXXFLAGS += -std=c++0x
+testHarness_SRCS += epicsMallocatorTest.cpp
+TESTS += epicsMallocatorTest
+
+TESTPROD_HOST += epicsSTLAllocatorTest
+epicsSTLAllocatorTest_SRCS += epicsSTLAllocatorTest.cpp
+# Note: we need to use the deprecated "-std=c++0x" here since the g++ 4.4.7
+# cross compiler for RTEMS used on Travis CI doesn't understand "-std=c++11".
+epicsSTLAllocatorTest_CXXFLAGS += -std=c++0x
+testHarness_SRCS += epicsSTLAllocatorTest.cpp
+TESTS += epicsSTLAllocatorTest
+
 TESTPROD_HOST += epicsTypesTest
 epicsTypesTest_SRCS += epicsTypesTest.cpp
 testHarness_SRCS += epicsTypesTest.cpp
