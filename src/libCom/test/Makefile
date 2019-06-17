@@ -35,6 +35,14 @@ epicsMallocatorTest_CXXFLAGS += -std=c++0x
 testHarness_SRCS += epicsMallocatorTest.cpp
 TESTS += epicsMallocatorTest
 
+TESTPROD_HOST += epicsFreeListAllocatorTest
+epicsFreeListAllocatorTest_SRCS += epicsFreeListAllocatorTest.cpp
+# Note: we need to use the deprecated "-std=c++0x" here since the g++ 4.4.7
+# cross compiler for RTEMS used on Travis CI doesn't understand "-std=c++11".
+epicsFreeListAllocatorTest_CXXFLAGS += -std=c++0x
+testHarness_SRCS += epicsFreeListAllocatorTest.cpp
+TESTS += epicsFreeListAllocatorTest
+
 TESTPROD_HOST += epicsSTLAllocatorTest
 epicsSTLAllocatorTest_SRCS += epicsSTLAllocatorTest.cpp
 # Note: we need to use the deprecated "-std=c++0x" here since the g++ 4.4.7
