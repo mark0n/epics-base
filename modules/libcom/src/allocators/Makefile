@@ -2,6 +2,7 @@
 
 SRC_DIRS += $(LIBCOM)/allocators
 INC += epicsAllocator.hpp
+INC += epicsFreeListAllocator.hpp
 INC += epicsGlobalAllocator.hpp
 INC += epicsMallocator.hpp
 Com_SRCS += epicsMallocator.cpp

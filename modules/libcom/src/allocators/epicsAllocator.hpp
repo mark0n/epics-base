@@ -17,6 +17,9 @@ namespace epics {
 
       void * ptr() const { return ptr_; }
       std::size_t size() const { return size_; }
+      bool operator==(const block& other) {
+        return ptr_ == other.ptr_ && size_ == other.size_;
+      }
     };
 
     inline bool operator==(const block& lhs, const block& rhs) {
