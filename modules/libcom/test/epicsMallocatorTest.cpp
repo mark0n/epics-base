@@ -8,7 +8,7 @@ using namespace epics::allocator;
 
 MAIN(epicsMallocatorTest)
 {
-    testPlan(6);
+    testPlan(8);
 
     mallocator m;
 
@@ -35,6 +35,16 @@ MAIN(epicsMallocatorTest)
         testOk(b.ptr() == NULL, "results in a block containing a null pointer (pointer is %p)", b.ptr());
         testOk(b.size() == 0, "results in a block of size 0 (size is %zu", b.size());
         m.deallocate(b);
+    }
+
+    {
+        testDiag("Mallocator instances");
+        testOk(m == m, "compare equal to themselves (reflexivity)");
+        mallocator m2;
+        std::size_t arbitrarySize = 42;
+        block b = m.allocate(arbitrarySize);
+        m2.deallocate(b);
+        testOk(m == m2, "can be used interchangeably (any two instances compare equal)");
     }
 
     return testDone();

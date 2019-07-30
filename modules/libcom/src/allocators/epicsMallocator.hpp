@@ -11,6 +11,9 @@ namespace epics {
       block allocate(std::size_t size) override final;
       void deallocate(block& b) override final;
     };
+
+    bool operator==(const mallocator&, const mallocator&);
+    bool operator!=(const mallocator&, const mallocator&);
   }
 }
 

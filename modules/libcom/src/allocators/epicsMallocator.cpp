@@ -26,5 +26,18 @@ namespace epics {
         b = block(NULL, 0);
       }
     }
+
+    // This class doesn't have any internal state. Any two epicsMallocator
+    // objects are interchangeable. In particular memory can safely be allocated
+    // using one instance of the allocator and deallocated using another. We
+    // therefore define comparison operators that say all epicsMallocator
+    // objects are equal:
+    bool operator==(const mallocator&, const mallocator&) {
+      return true;
+    }
+
+    bool operator!=(const mallocator&, const mallocator&) {
+      return false;
+    }
   }
 }

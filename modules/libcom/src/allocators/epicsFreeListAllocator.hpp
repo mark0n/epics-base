@@ -60,6 +60,23 @@ namespace epics {
         parent_.deallocate(b);
       }
     }
+
+    template <std::size_t blockSize, class Allocator>
+    bool operator==(
+        const freeList<blockSize, Allocator>& lhs,
+        const freeList<blockSize, Allocator>& rhs)
+    {
+      return lhs.root_ == rhs.root_ &&
+             lhs.parent_ == rhs.parent_;
+    }
+
+    template <std::size_t blockSize, class Allocator>
+    bool operator!=(
+        const freeList<blockSize, Allocator>& lhs,
+        const freeList<blockSize, Allocator>& rhs)
+    {
+      return !(lhs == rhs);
+    }
   }
 }
 
