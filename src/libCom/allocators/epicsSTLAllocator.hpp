@@ -34,6 +34,7 @@ namespace epics {
       template <typename U>
       explicit stl(const stl<U, Allocator> &) : allocator_(Allocator::instance()) {}
       ~stl() {}
+      // Note: We don't define the assignment operator (we don't allow overwriting of the allocator after memory has been allocated).
 
       template <typename U>
       struct rebind {
@@ -66,6 +67,22 @@ namespace epics {
         allocator_.deallocate(b);
       }
     };
+
+    template <typename T, class Allocator>
+    bool operator==(
+        const stl<T, Allocator>& lhs,
+        const stl<T, Allocator>& rhs)
+    {
+      return lhs.allocator_ == rhs.allocator_;
+    }
+
+    template <typename T, class Allocator>
+    bool operator!=(
+        const stl<T, Allocator>& lhs,
+        const stl<T, Allocator>& rhs)
+    {
+      return !(lhs == rhs);
+    }
   }
 }
 
