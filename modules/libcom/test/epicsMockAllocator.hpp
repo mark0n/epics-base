@@ -8,12 +8,11 @@ namespace epics {
   namespace allocator {
     template <int expectedAllocCalls, int expectedDeallocCalls, class Allocator>
     class mock : public base {
-      typename Allocator::value_type &parent_;
+      Allocator parent_;
       int allocCalls_;
       int deallocCalls_;
     public:
       mock() :
-          parent_(Allocator::instance()),
           allocCalls_(0),
           deallocCalls_(0) {};
       ~mock() {

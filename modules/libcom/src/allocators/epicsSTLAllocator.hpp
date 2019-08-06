@@ -12,7 +12,7 @@ namespace epics {
   namespace allocator {
     template <typename T, class Allocator>
     class stl {
-      typename Allocator::value_type &allocator_;
+      Allocator allocator_;
     public:
       typedef T           value_type;
       typedef T *         pointer;
@@ -29,10 +29,10 @@ namespace epics {
         return &x;
       }
 
-      stl() : allocator_(Allocator::instance()) {};
-      stl(const stl&) : allocator_(Allocator::instance()) {};
+      stl() {};
+      stl(const stl&) {};
       template <typename U>
-      explicit stl(const stl<U, Allocator> &) : allocator_(Allocator::instance()) {}
+      explicit stl(const stl<U, Allocator> &) {}
       ~stl() {}
       // Note: We don't define the assignment operator (we don't allow overwriting of the allocator after memory has been allocated).
 

@@ -15,10 +15,10 @@ namespace epics {
     template <std::size_t blockSize, class Allocator>
     class freeList : public base {
       static_assert(blockSize >= sizeof(void *), "epics::allocator::freeList doesn't support block sizes smaller than the size of a pointer");
-      typename Allocator::value_type &parent_;
+      Allocator parent_;
       struct Node { Node *next; } *root_;
     public:
-      freeList() : parent_(Allocator::instance()), root_(NULL) {};
+      freeList() : root_(NULL) {};
       ~freeList() { deallocateAll(); }
       block allocate(std::size_t size) override final;
       void deallocate(block& b) override final;

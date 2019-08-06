@@ -4,7 +4,6 @@
 #include <vector>
 
 #include "epicsSTLAllocator.hpp"
-#include "epicsGlobalAllocator.hpp"
 #include "epicsMallocator.hpp"
 
 using namespace epics::allocator;
@@ -15,7 +14,7 @@ MAIN(stlAllocatorTest)
 
     testDiag("Allocating a std::vector using epicsSTLAllocator backed by epicsMallocator");
 
-    typedef stl<int, global<mallocator>> stlAllocator;
+    typedef stl<int, mallocator> stlAllocator;
 
     const int numbers[] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
     size_t arraysize = sizeof(numbers) / sizeof(numbers[0]);

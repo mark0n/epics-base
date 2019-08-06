@@ -1,5 +1,4 @@
 #include "epicsFreeListAllocator.hpp"
-#include "epicsGlobalAllocator.hpp"
 #include "epicsMallocator.hpp"
 #include "epicsMockAllocator.hpp"
 #include "epicsUnitTest.h"
@@ -15,7 +14,7 @@ MAIN(epicsFreeListAllocatorTest)
     testPlan(29);
 
     const int arbitrarySize = 64;
-    typedef freeList<arbitrarySize, global<mallocator>> fla;
+    typedef freeList<arbitrarySize, mallocator> fla;
 
     {
         testDiag("Allocating a single block");
@@ -68,10 +67,8 @@ MAIN(epicsFreeListAllocatorTest)
     {
         testDiag("Allocating/deallocating blocks with sizes handled by parent allocator");
         typedef freeList<arbitrarySize,
-                global<
                 mock<1, 1,
-                global<
-                mallocator>>>> fla;
+                mallocator>> fla;
         fla fl;
         block firstBlock = fl.allocate(2 * arbitrarySize);
         testOk(firstBlock.ptr() != NULL, "results in a block containing a non-null pointer");
