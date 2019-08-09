@@ -15,19 +15,23 @@ namespace epics {
       Allocator allocator_;
     public:
       typedef T           value_type;
+#if __cplusplus < 201703L
       typedef T *         pointer;
       typedef const T *   const_pointer;
       typedef T &         reference;
       typedef const T &   const_reference;
+#endif
       typedef std::size_t size_type;
       typedef ptrdiff_t   difference_type;
 
+#if __cplusplus < 201703L
       pointer address(reference x) const {
         return &x;
       }
       const_pointer address(const_reference x) const {
         return &x;
       }
+#endif
 
       stl() {};
       stl(const stl&) {};
@@ -36,6 +40,7 @@ namespace epics {
       ~stl() {}
       // Note: We don't define the assignment operator (we don't allow overwriting of the allocator after memory has been allocated).
 
+#if __cplusplus < 201703L
       template <typename U>
       struct rebind {
         typedef stl<U, Allocator> other;
@@ -51,6 +56,7 @@ namespace epics {
       size_type max_size() const {
         return std::numeric_limits<size_type>::max() / sizeof(value_type);
       }
+#endif
 
       pointer allocate(size_type n, const_pointer /* hint */ = NULL) {
         std::cerr << "epics::allocator::stl: allocating " << n << " objects of size " << sizeof(value_type) << "\n";
