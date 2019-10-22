@@ -36,6 +36,18 @@
  */
 #define CXX_PLACEMENT_DELETE
 
+// https://en.cppreference.com/w/cpp/language/noexcept
+#if __has_feature(cxx_noexcept)
+#  define EPICS_CXX11_NOEXCEPT noexcept
+#endif
+
+// https://en.cppreference.com/w/cpp/language/final
+// https://en.cppreference.com/w/cpp/language/override
+#if __has_feature(cxx_override_control)
+#  define EPICS_CXX11_FINAL final
+#  define EPICS_CXX11_OVERRIDE override
+#endif
+
 #endif /* __cplusplus */
 
 /*

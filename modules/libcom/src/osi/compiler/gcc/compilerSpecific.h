@@ -41,7 +41,33 @@
 /*
  * CXX_PLACEMENT_DELETE - defined if compiler supports placement delete
  */
+#define EPICS_GCC_VERSION (__GNUC__ * 10000 \
+                           + __GNUC_MINOR__ * 100 \
+                           + __GNUC_PATCHLEVEL__)
+
+#if EPICS_GCC_VERSION >= 29600
 #define CXX_PLACEMENT_DELETE
+#endif
+
+#if defined(__GXX_EXPERIMENTAL_CXX0X__) || (__cplusplus >= 201103L)
+#  define EPICS_GCC_CXX11
+#endif
+
+// https://en.cppreference.com/w/cpp/language/noexcept
+#if (EPICS_GCC_VERSION >= 40600) && defined(EPICS_GCC_CXX11)
+#  define EPICS_CXX11_NOEXCEPT noexcept
+#else
+#  define EPICS_CXX11_NOEXCEPT
+#endif
+
+// https://en.cppreference.com/w/cpp/language/final
+// https://en.cppreference.com/w/cpp/language/override
+#if (EPICS_GCC_VERSION >= 40700) && defined(EPICS_GCC_CXX11)
+#  define EPICS_CXX11_FINAL final
+#  define EPICS_CXX11_OVERRIDE override
+#else
+#  define EPICS_CXX11_FINAL
+#  define EPICS_CXX11_OVERRIDE
 
 #endif /* __cplusplus */
 
