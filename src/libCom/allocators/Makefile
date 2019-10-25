@@ -3,7 +3,6 @@
 SRC_DIRS += $(LIBCOM)/allocators
 INC += epicsAllocator.hpp
 INC += epicsFreeListAllocator.hpp
-INC += epicsGlobalAllocator.hpp
 INC += epicsMallocator.hpp
 Com_SRCS += epicsMallocator.cpp
 # Note: we need to use the deprecated "-std=c++0x" here since the g++ 4.4.7
