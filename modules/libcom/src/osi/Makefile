@@ -66,6 +66,7 @@ INC += epicsTempFile.h
 INC += epicsGetopt.h
 INC += epicsStackTrace.h
 INC += epicsDemangle.h
+INC += cpp11.h
 
 INC += devLib.h
 INC += devLibVME.h
