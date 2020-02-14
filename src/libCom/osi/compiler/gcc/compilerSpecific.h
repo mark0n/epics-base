@@ -60,23 +60,6 @@
 #  define EPICS_GCC_CXX11
 #endif
 
-// https://en.cppreference.com/w/cpp/language/noexcept
-#if (EPICS_GCC_VERSION >= 40600) && defined(EPICS_GCC_CXX11)
-#  define EPICS_CXX11_NOEXCEPT noexcept
-#else
-#  define EPICS_CXX11_NOEXCEPT
-#endif
-
-// https://en.cppreference.com/w/cpp/language/final
-// https://en.cppreference.com/w/cpp/language/override
-#if (EPICS_GCC_VERSION >= 40700) && defined(EPICS_GCC_CXX11)
-#  define EPICS_CXX11_FINAL final
-#  define EPICS_CXX11_OVERRIDE override
-#else
-#  define EPICS_CXX11_FINAL
-#  define EPICS_CXX11_OVERRIDE
-#endif
-
 #endif /* __cplusplus */
 
 /*
