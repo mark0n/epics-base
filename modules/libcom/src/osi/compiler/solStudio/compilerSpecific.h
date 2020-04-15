@@ -31,11 +31,9 @@
 
 /*
  * CXX_PLACEMENT_DELETE - defined if compiler supports placement delete
- * CXX_THROW_SPECIFICATION - defined if compiler supports throw specification
  *
  * (our default guess is that the compiler implements the C++ 97 standard)
  */
-#define CXX_THROW_SPECIFICATION
 #define CXX_PLACEMENT_DELETE
 
 #endif /* __cplusplus */

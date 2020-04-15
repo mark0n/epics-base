@@ -21,6 +21,8 @@
 #endif
 
 #define EPICS_ALWAYS_INLINE __forceinline
+#define NO_RETURN __declspec(noreturn)
+
 
 /* Expands to a 'const char*' which describes the name of the current function scope */
 #define EPICS_FUNCTION __FUNCTION__
@@ -36,10 +38,10 @@
 
 /*
  * CXX_PLACEMENT_DELETE - defined if compiler supports placement delete
- * CXX_THROW_SPECIFICATION - defined if compiler supports throw specification
  */
 #define CXX_PLACEMENT_DELETE
-#define CXX_THROW_SPECIFICATION
+
+#define USING_BASE_TYPE(B,T) using typename B :: T;
 
 #endif /* __cplusplus */
 
