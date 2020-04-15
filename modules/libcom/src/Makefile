@@ -15,6 +15,8 @@ include $(TOP)/configure/CONFIG
 #USR_CFLAGS += -DNVALGRIND
 
 INC += valgrind/valgrind.h
+INC += valgrind/memcheck.h
+INC += valgrind/epicsMemChk.h
 
 EXPAND_COMMON = libComVersion.h@
 
