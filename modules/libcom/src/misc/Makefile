@@ -27,6 +27,7 @@ INC += ipAddrToAsciiAsynchronous.h
 INC += compilerDependencies.h
 INC += epicsUnitTest.h
 INC += testMain.h
+INC += AllocatorArena.h
 
 # epicsVersion.h is created by this Makefile
 INC += epicsVersion.h
@@ -42,3 +43,5 @@ Com_SRCS += epicsString.c
 Com_SRCS += truncateFile.c
 Com_SRCS += ipAddrToAsciiAsynchronous.cpp
 Com_SRCS += epicsUnitTest.c
+Com_SRCS += AllocatorArenaUntyped.cpp
+
