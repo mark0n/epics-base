@@ -1,4 +1,6 @@
 /*************************************************************************\
+* Copyright (c) 2020 Triad National Security, as operator of Los Alamos 
+*     National Laboratory
 * Copyright (c) 2008 UChicago Argonne LLC, as Operator of Argonne
 *     National Laboratory.
 * Copyright (c) 2002 The Regents of the University of California, as
@@ -20,6 +22,46 @@
 #include "compilerSpecific.h"
 
 #ifdef __cplusplus
+
+#if __cplusplus >= 201103L
+#define epicsOverride override
+#else
+#define epicsOverride 
+#endif
+
+#if __cplusplus >= 201103L
+#define epicsFinal final
+#else
+#define epicsFinal
+#endif
+
+#if __cplusplus >= 201103L
+#define epicsNoexcept noexcept
+#else
+#define epicsNoexcept throw()
+#endif
+
+#if __cplusplus >= 201103L
+#define epicsConstexpr constexpr
+#else
+#define epicsConstexpr 
+#endif
+
+#if __cplusplus >= 201103L
+#define epicsMove(A) std::move(A)
+#else
+#define epicsMove(A) (A)
+#endif
+
+/*
+ * deleted method should also be declared private as per convention
+ * with old compilers
+ */
+#if __cplusplus >= 201103L
+#define epicsDeleteMethod =delete
+#else
+#define epicsDeleteMethod 
+#endif
 
 /*
  * usage: epicsPlacementDeleteOperator (( void *, myMemoryManager & ))
