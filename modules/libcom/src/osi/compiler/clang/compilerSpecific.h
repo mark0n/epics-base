@@ -29,12 +29,16 @@
 /* Expands to a 'const char*' which describes the name of the current function scope */
 #define EPICS_FUNCTION __PRETTY_FUNCTION__
 
+#define NO_RETURN __attribute__((noreturn))
+
 #ifdef __cplusplus
 
 /*
  * CXX_PLACEMENT_DELETE - defined if compiler supports placement delete
  */
 #define CXX_PLACEMENT_DELETE
+
+#define USING_BASE_TYPE(B,T) using typename B :: T;
 
 #endif /* __cplusplus */
 
