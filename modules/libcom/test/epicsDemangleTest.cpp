@@ -13,11 +13,17 @@
 #include <string>
 #include <typeinfo>
 
+#include "epicsAtomic.h"
+#include "epicsEvent.h"
+#include "epicsThread.h"
 #include "epicsDemangle.h"
 #include "epicsAssert.h"
 #include "epicsUnitTest.h"
 #include "testMain.h"
 
+using std :: size_t;
+using namespace epics;
+using namespace atomic;
 
 using std :: string;
 
@@ -27,7 +33,11 @@ public:
     void fred ( int ) {}
 };
 
-void showBasicFunc ()
+static const unsigned N = 200u;
+static size_t iterCount = 0u;
+epicsEvent completion;
+
+void showBasicFunc ( void * )
 {
     const string result0 = epicsDemangle ( typeid ( MyTestClass ).name () );
     testDiag ( "Symbol %s demangled %s\n",
@@ -35,12 +45,31 @@ void showBasicFunc ()
     const string result1 = epicsDemangleTypeName ( typeid ( MyTestClass ) );
     testDiag ( "Type %s demangled %s\n",
                 typeid ( MyTestClass ).name (), result1.c_str() );
+    if ( epicsAtomicIncrSizeT ( & iterCount ) == N ) {
+        completion.signal ();
+    }
 }
+
+void threadTest ()
+{
+    const unsigned int stackSize = 
+        epicsThreadGetStackSize ( epicsThreadStackSmall );
+
+    // try to get them all running at once
+    // (also check for thread private cleanup problems in valgrind)
+    for ( size_t i = 0u; i < N; i++ ) {
+        epicsThreadCreate ( "test", 100, stackSize, showBasicFunc, 0 );
+    }
+    while ( epicsAtomicGetSizeT ( & iterCount ) < N ) {
+        completion.wait ();
+    }
+}
+
 
 MAIN ( epicsDemangleTest )
 {
     testPlan ( 0 );
-    showBasicFunc (); 
+    threadTest (); 
     return testDone();
 }
 
