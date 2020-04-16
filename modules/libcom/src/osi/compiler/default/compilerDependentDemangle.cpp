@@ -2,22 +2,27 @@
 /*************************************************************************\
 * Copyright (c) 2020 Triad National Security, as operator of Los Alamos 
 *     National Laboratory
-* Copyright (c) 2011 UChicago Argonne LLC, as Operator of Argonne
-*     National Laboratory.
 * EPICS BASE is distributed subject to a Software License Agreement found
 * in file LICENSE that is included with this distribution.
 \*************************************************************************/
 
 /*
- *  Author Jeffrey O. Hill
- *  johill@lanl.gov
+ * Author: Jeffrey O. Hill
  */
+#include <exception>
+#include <cstdlib>
 
-#ifndef epicsAtomicCD_h
-#define epicsAtomicCD_h
+#define epicsExportSharedSymbols
+#include "epicsDemangle.h"
 
-#define EPICS_ATOMIC_CMPLR_NAME "SOLSTUDIO"
+using std :: string;
 
-#include "epicsAtomicOSD.h"
+std :: string epicsDemangle ( const char * const pMangledName )
+{
+    return std :: string ( pMangledName );
+}
 
-#endif /* epicsAtomicCD_h */
+std :: string epicsDemangleTypeName ( const std :: type_info & ti )
+{
+    return epicsDemangle ( ti.name () );
+}

@@ -1,7 +1,7 @@
 
 /*************************************************************************\
-* Copyright (c) 2011 LANS LLC, as Operator of
-*     Los Alamos National Laboratory.
+* Copyright (c) 2020 Triad National Security, as operator of Los Alamos 
+*     National Laboratory
 * Copyright (c) 2011 UChicago Argonne LLC, as Operator of Argonne
 *     National Laboratory.
 * EPICS BASE is distributed subject to a Software License Agreement found

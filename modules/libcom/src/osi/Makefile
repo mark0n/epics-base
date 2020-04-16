@@ -9,8 +9,16 @@
 
 SRC_DIRS += $(LIBCOM)/osi
 
+# compiler specific
 INC += compilerDependencies.h
 INC += compilerSpecific.h
+INC += epicsStaticInstance.h
+INC += epicsStaticInstanceCD.h
+INC += epicsStaticInstanceSaneCmplr.h
+INC += epicsStaticInstanceSketchyCmplr.h
+
+Com_SRCS += epicsStaticInstanceSketchyCmplr.cpp
+Com_SRCS += compilerDependentDemangle.cpp
 
 INC += osiFileName.h
 INC += osiSock.h
@@ -57,6 +65,7 @@ INC += epicsStdioRedirect.h
 INC += epicsTempFile.h
 INC += epicsGetopt.h
 INC += epicsStackTrace.h
+INC += epicsDemangle.h
 
 INC += devLib.h
 INC += devLibVME.h
@@ -157,3 +166,4 @@ Com_SRCS_WIN32 += forceBadAllocException.cpp
 Com_SRCS += epicsStackTrace.c
 Com_SRCS += osdBackTrace.cpp
 Com_SRCS += osdFindAddr.c
+

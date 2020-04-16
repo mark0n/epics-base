@@ -2,10 +2,8 @@
 /*************************************************************************\
 * Copyright (c) 2020 Triad National Security, as operator of Los Alamos 
 *     National Laboratory
-* Copyright (c) 2011 UChicago Argonne LLC, as Operator of Argonne
-*     National Laboratory.
 * EPICS BASE is distributed subject to a Software License Agreement found
-* in file LICENSE that is included with this distribution.
+* in file LICENSE that is included with this distribution. 
 \*************************************************************************/
 
 /*
@@ -13,11 +11,10 @@
  *  johill@lanl.gov
  */
 
-#ifndef epicsAtomicCD_h
-#define epicsAtomicCD_h
+#ifndef epicsStaticInstanceCD_h
+#define epicsStaticInstanceCD_h
 
-#define EPICS_ATOMIC_CMPLR_NAME "SOLSTUDIO"
+// we dont trust compilers we dont know
+#   include "epicsStaticInstanceSketchyCmplr.h"
 
-#include "epicsAtomicOSD.h"
-
-#endif /* epicsAtomicCD_h */
+#endif /* epicsStaticInstanceCD_h */
