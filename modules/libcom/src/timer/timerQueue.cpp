@@ -1,4 +1,6 @@
 /*************************************************************************\
+* Copyright (c) 2020 Triad National Security, as operator of Los Alamos 
+*     National Laboratory
 * Copyright (c) 2002 The University of Chicago, as Operator of Argonne
 *     National Laboratory.
 * Copyright (c) 2002 The Regents of the University of California, as
@@ -12,55 +14,43 @@
  *              505 665 1831
  */
 
-#include <stdio.h>
-#include <float.h>
+#include <cstdio>
 
-#include "epicsGuard.h"
-#include "timerPrivate.h"
 #include "errlog.h"
+#include "timerPrivate.h"
 
-const double timerQueue :: exceptMsgMinPeriod = 60.0 * 5.0; // seconds
+const double timerQueue :: m_exceptMsgMinPeriod = 60.0 * 5.0; // seconds
 
-epicsTimerQueue::~epicsTimerQueue () {}
-
-timerQueue::timerQueue ( epicsTimerQueueNotify & notifyIn ) :
-    mutex(__FILE__, __LINE__),
-    notify ( notifyIn ),
-    pExpireTmr ( 0 ),
-    processThread ( 0 ),
-    exceptMsgTimeStamp (
-        epicsTime :: getCurrent () - exceptMsgMinPeriod ),
-    cancelPending ( false )
+timerQueue :: timerQueue ( epicsTimerQueueNotify & notifyIn ) :
+    Mutex ( __FILE__, __LINE__ ),
+    m_exceptMsgTimeStamp ( epicsTime :: getCurrent () 
+                                    - m_exceptMsgMinPeriod ),
+    m_notify ( notifyIn ), 
+    m_pExpTmr ( 0 ),  
+    m_processThread ( 0 ), 
+    m_cancelPending ( false )
 {
 }
 
-timerQueue::~timerQueue ()
+timerQueue :: ~timerQueue ()
 {
-    timer *pTmr;
-    while ( ( pTmr = this->timerList.get () ) ) {
-        pTmr->curState = timer::stateLimbo;
+    if ( m_heap.size () ) {
+        while ( Timer * const pTmr = m_heap.back () ) {    
+            pTmr->m_curState = Timer :: stateLimbo;
+            m_heap.pop_back ();
+        }
     }
 }
 
 void timerQueue ::
-    printExceptMsg ( const char * pName, const type_info & type )
+    m_printExceptMsg ( const char * pName, const type_info & type )
 {
-    char date[64];
-    double delay;
-    try {
-        epicsTime cur = epicsTime :: getCurrent ();
-        delay = cur - this->exceptMsgTimeStamp;
-        cur.strftime ( date, sizeof ( date ),
-                        "%a %b %d %Y %H:%M:%S.%f" );
-        if ( delay >= exceptMsgMinPeriod ) {
-            this->exceptMsgTimeStamp = cur;
-        }
-    }
-    catch ( ... ) {
-        delay = DBL_MAX;
-        strcpy ( date, "UKN DATE" );
-    }
-    if ( delay >= exceptMsgMinPeriod ) {
+    epicsTime cur = epicsTime :: getCurrent ();
+    double delay = cur - m_exceptMsgTimeStamp;
+    if ( delay >= m_exceptMsgMinPeriod ) {
+        m_exceptMsgTimeStamp = cur;
+        char date[64];
+        cur.strftime ( date, sizeof ( date ), "%a %b %d %Y %H:%M:%S.%f" );
         // we dont touch the typeid for the timer expiration
         // notify interface here because they might have
         // destroyed the timer during its callback
@@ -71,155 +61,204 @@ void timerQueue ::
             pName,
             type.name (),
             date );
+        errlogPrintf ( "!!!! WARNING - PERIODIC TIMER MAY NOT RESTART !!!!\n" );
         errlogFlush ();
     }
 }
 
-double timerQueue::process ( const epicsTime & currentTime )
+inline double timerQueue :: m_expDelay ( const epicsTime & currentTime )
 {
-    epicsGuard < epicsMutex > guard ( this->mutex );
+    double delay = DBL_MAX;
+    if ( m_heap.size () > 0u ) {
+        delay = m_heap.front ()->m_exp - currentTime;
+    }
+    return delay;
+}
 
-    if ( this->pExpireTmr ) {
+double timerQueue :: process ( const epicsTime & currentTime )
+{
+    Guard guard ( *this );
+    return this->process ( guard, currentTime );
+}
+
+double timerQueue :: process ( Guard & guard,
+                                const epicsTime & currentTime )
+{  
+    guard.assertIdenticalMutex ( *this );
+    if ( m_processThread ) {
         // if some other thread is processing the queue
         // (or if this is a recursive call)
-        timer * pTmr = this->timerList.first ();
-        if ( pTmr ) {
-            double delay = pTmr->exp - currentTime;
-            if ( delay < 0.0 ) {
-                delay = 0.0;
-            }
-            return delay;
+        double delay = m_expDelay ( currentTime );
+        if ( delay <= 0.0 ) {
+            delay = 0.0;
         }
-        else {
-            return DBL_MAX;
-        }
-    }
-
-    //
-    // Tag current epired tmr so that we can detect if call back
-    // is in progress when canceling the timer.
-    //
-    if ( this->timerList.first () ) {
-        if ( currentTime >= this->timerList.first ()->exp ) {
-            this->pExpireTmr = this->timerList.first ();
-            this->timerList.remove ( *this->pExpireTmr );
-            this->pExpireTmr->curState = timer::stateActive;
-            this->processThread = epicsThreadGetIdSelf ();
-#           ifdef DEBUG
-                this->pExpireTmr->show ( 0u );
-#           endif
-        }
-        else {
-            double delay = this->timerList.first ()->exp - currentTime;
-            debugPrintf ( ( "no activity process %f to next\n", delay ) );
-            return delay;
-        }
-    }
-    else {
-        return DBL_MAX;
+        return delay;
     }
 
 #   ifdef DEBUG
         unsigned N = 0u;
 #   endif
 
-    double delay = DBL_MAX;
-    while ( true ) {
-        epicsTimerNotify *pTmpNotify = this->pExpireTmr->pNotify;
-        this->pExpireTmr->pNotify = 0;
-        epicsTimerNotify::expireStatus expStat ( epicsTimerNotify::noRestart );
-
-        {
-            epicsGuardRelease < epicsMutex > unguard ( guard );
-
+    m_processThread = epicsThreadGetIdSelf ();
+    double delay = m_expDelay ( currentTime );
+    while ( delay <= 0.0 ) {
+        //
+        // if delay is zero or less we know at least one timer is on 
+        // the queue
+        //
+        // tag current expired tmr so that we can detect if call back
+        // is in progress when canceling the timer
+        //
+        delay = 0.0;
+        m_pExpTmr = m_heap.front ();
+        epicsTimerNotify * const pTmpNotify = m_pExpTmr->m_pNotify;
+        m_pExpTmr->m_pNotify = 0;
+        epicsTimerNotify :: expireStatus 
+                            expStat ( epicsTimerNotify :: noRestart );
+        if ( pTmpNotify ) {
+            GuardRelease unguard ( guard );
             debugPrintf ( ( "%5u expired \"%s\" with error %f sec\n",
-                N++, typeid ( this->pExpireTmr->notify ).name (),
-                currentTime - this->pExpireTmr->exp ) );
+                N++, 
+                typeid ( *pTmptNotify ).name (), 
+                currentTime - m_pExpTmr->m_exp ) );
             try {
                 expStat = pTmpNotify->expire ( currentTime );
             }
             catch ( std::exception & except ) {
-                printExceptMsg ( except.what (), typeid ( except ) );
+                m_printExceptMsg ( except.what (), typeid ( except ) );
             }
             catch ( ... ) {
-                printExceptMsg ( "non-standard exception", typeid ( void ) );
+                m_printExceptMsg ( "non-standard exception", typeid ( void ) );
             }
         }
 
         //
-        // only restart if they didnt cancel() the timer
-        // while the call back was running
+        // !! The position of a timer in the queue is allowed to change 
+        // !! while its timer callback is running. This happens 
+        // !! potentially when they reschedule a timer or cancel a
+        // !! timer. However, a small amount of overhead is expended
+        // !! to properly handle this type of change below.
         //
-        if ( this->cancelPending ) {
+        if ( m_cancelPending ) {
+            //
+            // only restart if they didnt cancel() the timer
+            // while the call back was running
+            //
             // 1) if another thread is canceling then cancel() waits for
             // the event below
             // 2) if this thread is canceling in the timer callback then
             // dont touch timer or notify here because the cancel might
             // have occurred because they destroyed the timer in the
             // callback
-            this->cancelPending = false;
-            this->cancelBlockingEvent.signal ();
+            // 3) timer::cancel sets timer state to limbo and timer index
+            // to invalid
+            //
+            m_cancelPending = false;
+            m_cancelBlockingEvent.signal ();
         }
         else {
-            this->pExpireTmr->curState = timer::stateLimbo;
-            if ( this->pExpireTmr->pNotify ) {
-                // pNotify was cleared above so if it is valid now we know that
-                // someone has started the timer from another thread and that
-                // predominates over the restart parameters from expire.
-                this->pExpireTmr->privateStart (
-                    *this->pExpireTmr->pNotify, this->pExpireTmr->exp );
+            if ( m_pExpTmr->m_pNotify ) {
+                // pNotify was cleared above; if its valid now we 
+                // know that someone has started the timer from 
+                // another thread and that overrides the restart 
+                // parameters from expire
+                if ( ! m_fixParent ( m_pExpTmr->m_index ) ) {
+                    m_fixChildren ( m_pExpTmr->m_index );
+                }
             }
             else if ( expStat.restart() ) {
                 // restart as nec
-                this->pExpireTmr->privateStart (
-                    *pTmpNotify, currentTime + expStat.expirationDelay() );
-            }
-        }
-        this->pExpireTmr = 0;
-
-        if ( this->timerList.first () ) {
-            if ( currentTime >= this->timerList.first ()->exp ) {
-                this->pExpireTmr = this->timerList.first ();
-                this->timerList.remove ( *this->pExpireTmr );
-                this->pExpireTmr->curState = timer::stateActive;
-#               ifdef DEBUG
-                    this->pExpireTmr->show ( 0u );
-#               endif
+                m_pExpTmr->m_pNotify = pTmpNotify;
+                m_pExpTmr->m_exp = currentTime + expStat.expirationDelay ();
+                if ( ! m_fixParent ( m_pExpTmr->m_index ) ) {
+                    m_fixChildren ( m_pExpTmr->m_index );
+                }
             }
             else {
-                delay = this->timerList.first ()->exp - currentTime;
-                this->processThread = 0;
-                break;
+                m_pExpTmr->m_remove ( guard );
             }
         }
-        else {
-            this->processThread = 0;
-            delay = DBL_MAX;
-            break;
-        }
+        delay = m_expDelay ( currentTime );
     }
+    m_pExpTmr = 0; 
+    m_processThread = 0;
     return delay;
 }
 
-epicsTimer & timerQueue::createTimer ()
+bool timerQueue :: m_fixParent ( size_t childIdx )
 {
-    return * new ( this->timerFreeList ) timer ( * this );
+    bool itMoved = false;
+    while ( childIdx != 0u ) {
+        const size_t parentIdx = m_parent ( childIdx );
+        if ( *m_heap[parentIdx] <= *m_heap[childIdx] ) { 
+            break;
+        }
+        m_swapEntries ( parentIdx, childIdx );
+        childIdx = parentIdx;
+        itMoved = true;
+    }
+    return itMoved;
 }
 
-epicsTimerForC & timerQueue::createTimerForC ( epicsTimerCallback pCallback, void *pArg )
+void timerQueue :: m_fixChildren ( size_t parentIdx )
 {
-    return * new ( this->timerForCFreeList ) epicsTimerForC ( *this, pCallback, pArg );
+    const size_t hpsz = m_heap.size ();
+    while ( true ) {
+        const size_t leftChildIdx = m_leftChild ( parentIdx );  
+        const size_t rightChildIdx = m_rightChild ( parentIdx );  
+        size_t smallestIdx = parentIdx;
+        if ( leftChildIdx < hpsz ) {
+            if ( *m_heap[parentIdx] > *m_heap[leftChildIdx] ) {
+                smallestIdx = leftChildIdx;
+            }
+        }
+        if ( rightChildIdx < hpsz ) {
+            if ( *m_heap[smallestIdx] > *m_heap[rightChildIdx] ) {
+                smallestIdx = rightChildIdx;
+            }
+        }
+        if ( smallestIdx == parentIdx ) {
+            break;
+        }
+        m_swapEntries ( parentIdx, smallestIdx );
+        parentIdx = smallestIdx;
+    } 
 }
 
-void timerQueue::show ( unsigned level ) const
+Timer & timerQueue :: createTimerPrivate ()
 {
-    epicsGuard < epicsMutex > locker ( this->mutex );
-    printf ( "epicsTimerQueue with %u items pending\n", this->timerList.count () );
+    return * new Timer ( * this );
+}
+
+epicsTimer & timerQueue :: createTimer ()
+{
+    return * new Timer ( * this );
+}
+
+TimerForC & timerQueue :: createTimerForC ( 
+    epicsTimerCallback pCallback, void *pArg )
+{
+    return * new TimerForC ( *this, pCallback, pArg );
+}
+
+void timerQueue :: show ( unsigned level ) const
+{
+    Guard guard ( const_cast < timerQueue & > ( *this ) );
+    this->show ( guard, level );
+}
+
+void timerQueue :: show ( Guard & guard, unsigned level ) const
+{
+    guard.assertIdenticalMutex ( *this );
+    printf ( "epicsTimerQueue with %lu items pending\n", 
+                (unsigned long) m_heap.size () );
     if ( level >= 1u ) {
-        tsDLIterConst < timer > iter = this->timerList.firstIter ();
-        while ( iter.valid () ) {
-            iter->show ( level - 1u );
-            ++iter;
+        std :: vector < Timer * > :: const_iterator
+                                ppTimer = m_heap.begin ();
+        while ( ppTimer != m_heap.end () && *ppTimer ) {   
+            (*ppTimer)->show ( level - 1u );
+            ++ppTimer;
         }
     }
 }
+
