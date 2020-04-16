@@ -179,6 +179,11 @@ epicsAtomicTest_SRCS += epicsAtomicTest.cpp
 testHarness_SRCS += epicsAtomicTest.cpp
 TESTS += epicsAtomicTest
 
+TESTPROD_HOST += epicsStaticInstanceTest
+epicsStaticInstanceTest_SRCS += epicsStaticInstanceTest.cpp
+testHarness_SRCS += epicsStaticInstanceTest.cpp
+TESTS += epicsStaticInstanceTest
+
 TESTPROD_HOST += macDefExpandTest
 macDefExpandTest_SRCS += macDefExpandTest.c
 testHarness_SRCS += macDefExpandTest.c
@@ -259,6 +264,16 @@ TESTPROD_HOST += iocshTest
 iocshTest_SRCS += iocshTest.cpp
 TESTS += iocshTest
 TESTFILES += $(wildcard ../iocshTest*.cmd)
+
+TESTPROD_HOST += AllocatorArenaTest 
+epicsAllocatorArenaTest_SRCS += AllocatorArenaTest.cpp
+testHarness_SRCS += AllocatorArenaTest.cpp
+TESTS += AllocatorArenaTest 
+
+TESTPROD_HOST += epicsDemangleTest 
+epicsAllocatorArenaTest_SRCS += epicsDemangleTest.cpp
+testHarness_SRCS += epicsDemangleTest.cpp
+TESTS += epicsDemangleTest 
 
 # The testHarness runs all the test programs in a known working order.
 testHarness_SRCS += epicsRunLibComTests.c
