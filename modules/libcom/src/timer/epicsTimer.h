@@ -1,11 +1,12 @@
 /*************************************************************************\
+* Copyright (c) 2020 Triad National Security, as operator of Los Alamos 
+*     National Laboratory
 * Copyright (c) 2002 The University of Chicago, as Operator of Argonne
 *     National Laboratory.
 * Copyright (c) 2002 The Regents of the University of California, as
 *     Operator of Los Alamos National Laboratory.
-* EPICS BASE Versions 3.13.7
-* and higher are distributed subject to a Software License Agreement found
-* in file LICENSE that is included with this distribution. 
+* EPICS BASE is distributed subject to a Software License Agreement found
+* in file LICENSE that is included with this distribution.
 \*************************************************************************/
 /* epicsTimer.h */
 
@@ -14,50 +15,80 @@
 #ifndef epicsTimerH
 #define epicsTimerH
 
-#include <float.h>
-
-#include "shareLib.h"
 #include "epicsTime.h"
 #include "epicsThread.h"
+#include "shareLib.h"
 
 #ifdef __cplusplus
 
+#include <cfloat>
+
 /*
  * Notes:
- * 1) epicsTimer does not hold its lock when calling callbacks.
+ * 1) The timer queue process method does not hold the timer 
+ * queue lock when calling callbacks, to avoid deadlocks.
+ *
+ * 2) The timer start method has three different possible outcomes
+ *
+ * 2a) If start is called and the timer isnt pending in the timer
+ * queue, and the timer callback isnt currently being orchestrated,
+ * then the timer is schedualed in the queue and start returns 
+ * 1u, indicating that the timer callback will run once as a 
+ * direct consequence of this invocation of start.
+ *
+ * 2b) If start is called and the timer is already pending in 
+ * the timer queue, then the timer is reschedualed back into
+ * a new positon in the queue and start returns 0u. The 
+ * timer callback will run once as a reschedualed (postponed) 
+ * consequence of a previous invocation of start, but zero 
+ * times as a direct consequence of this call to start.
+ *
+ * 2c) If start is called and the timer isnt pending in the timer 
+ * queue, but the timer callback _is_ currently being orchestrated
+ * then it is reschedualed in the queue for a new expiration 
+ * time, and start returns 1u. The timer callback will run twice.
+ * Once as a consequence of this invocation of start, and once 
+ * as a consequence of a previous call to start.
+ *
+ * 3) Cancel returns true if the timer was pending in the queue
+ * when cancel was called, and false otherwise.
  */
 
 /* code using a timer must implement epicsTimerNotify */
 class epicsShareClass epicsTimerNotify {
 public:
     enum restart_t { noRestart, restart };
-    class expireStatus {
+    class epicsShareClass expireStatus {
     public:
-        epicsShareFunc expireStatus ( restart_t );
-        epicsShareFunc expireStatus ( restart_t, const double & expireDelaySec );
-        epicsShareFunc bool restart () const;
-        epicsShareFunc double expirationDelay () const;
+        expireStatus ( restart_t );
+        expireStatus ( restart_t, const double & expireDelaySec );
+        bool restart () const;
+        double expirationDelay () const;
     private:
-        double delay;
+        double m_delay;
     };
 
-    virtual ~epicsTimerNotify () = 0;
     /* return "noRestart" or "expireStatus ( restart, 30.0 )" */
     virtual expireStatus expire ( const epicsTime & currentTime ) = 0;
     virtual void show ( unsigned int level ) const;
+protected:
+    virtual ~epicsTimerNotify () {} // protected disables delete through intf
 };
 
 class epicsShareClass epicsTimer {
 public:
     /* calls cancel (see warning below) and then destroys the timer */
     virtual void destroy () = 0;
-    virtual void start ( epicsTimerNotify &, const epicsTime & ) = 0;
-    virtual void start ( epicsTimerNotify &, double delaySeconds ) = 0;
-    /* WARNING: A deadlock will occur if you hold a lock while
+    /* see note 2 above for the significance of the return value */
+    virtual unsigned start ( epicsTimerNotify &, const epicsTime & ) = 0;
+    virtual unsigned start ( epicsTimerNotify &, double delaySeconds ) = 0;
+    /* see note 3 for the significance of the return value
+     *
+     * WARNING: A deadlock will occur if you hold a lock while
      * calling this function that you also take within the timer 
      * expiration callback.
      */
-    virtual void cancel () = 0;
+    virtual bool cancel () = 0;
     struct expireInfo {
         expireInfo ( bool active, const epicsTime & expireTime );
         bool active;
@@ -67,7 +98,7 @@ public:
     double getExpireDelay ();
     virtual void show ( unsigned int level ) const = 0;
 protected:
-    virtual ~epicsTimer () = 0; /* protected => delete() must not be called */
+    virtual ~epicsTimer () = 0; /* disable delete */
 };
 
 class epicsTimerQueue {
@@ -75,7 +106,7 @@ public:
     virtual epicsTimer & createTimer () = 0;
     virtual void show ( unsigned int level ) const = 0;
 protected:
-    epicsShareFunc virtual ~epicsTimerQueue () = 0;
+    virtual ~epicsTimerQueue () {} /* disable delete */
 };
 
 class epicsTimerQueueActive
@@ -85,7 +116,7 @@ public:
         bool okToShare, unsigned threadPriority = epicsThreadPriorityMin + 10 );
     virtual void release () = 0; 
 protected:
-    epicsShareFunc virtual ~epicsTimerQueueActive () = 0;
+    virtual ~epicsTimerQueueActive () {} /* disable delete */
 };
 
 class epicsTimerQueueNotify {
@@ -93,18 +124,14 @@ public:
     /* called when a new timer is inserted into the queue and the */
     /* delay to the next expire has changed */
     virtual void reschedule () = 0;
-    /* if there is a quantum in the scheduling of timer intervals */
-    /* return this quantum in seconds. If unknown then return zero. */
-    virtual double quantum () = 0;
 protected:
-    epicsShareFunc virtual ~epicsTimerQueueNotify () = 0;
+    virtual ~epicsTimerQueueNotify () {} /* disable delete */
 };
 
-class epicsTimerQueuePassive
-    : public epicsTimerQueue {
+class epicsTimerQueuePassive : public epicsTimerQueue {
 public:
     static epicsShareFunc epicsTimerQueuePassive & create ( epicsTimerQueueNotify & );
-    epicsShareFunc virtual ~epicsTimerQueuePassive () = 0; /* ok to call delete */
+    virtual ~epicsTimerQueuePassive () {} /* ok to call delete */
     virtual double process ( const epicsTime & currentTime ) = 0; /* returns delay to next expire */
 };
 
@@ -114,11 +141,11 @@ inline epicsTimer::expireInfo::expireInfo ( bool activeIn,
 {
 }
 
-inline double epicsTimer::getExpireDelay ()
+inline double epicsTimer :: getExpireDelay ()
 {
     epicsTimer::expireInfo info = this->getExpireInfo ();
     if ( info.active ) {
-        double delay = info.expireTime - epicsTime::getMonotonic ();
+        double delay = info.expireTime - epicsTime::getCurrent ();
         if ( delay < 0.0 ) {
             delay = 0.0;
         }
@@ -130,7 +157,7 @@ inline double epicsTimer::getExpireDelay ()
 extern "C" {
 #endif /* __cplusplus */
 
-typedef struct epicsTimerForC * epicsTimerId;
+typedef struct TimerForC * epicsTimerId;
 typedef void ( *epicsTimerCallback ) ( void *pPrivate );
 
 /* thread managed timer queue */
@@ -167,11 +194,11 @@ epicsShareFunc void  epicsShareAPI
     epicsTimerQueuePassiveShow ( epicsTimerQueuePassiveId id, unsigned int level );
 
 /* timer */
-epicsShareFunc void epicsShareAPI 
+epicsShareFunc unsigned epicsShareAPI 
     epicsTimerStartTime ( epicsTimerId id, const epicsTimeStamp *pTime );
-epicsShareFunc void epicsShareAPI 
+epicsShareFunc unsigned epicsShareAPI 
     epicsTimerStartDelay ( epicsTimerId id, double delaySeconds );
-epicsShareFunc void epicsShareAPI 
+epicsShareFunc int epicsShareAPI 
     epicsTimerCancel ( epicsTimerId id );
 epicsShareFunc double epicsShareAPI 
     epicsTimerGetExpireDelay ( epicsTimerId id );

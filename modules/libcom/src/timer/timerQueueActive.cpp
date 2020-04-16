@@ -1,5 +1,7 @@
 /*************************************************************************\
-* Copyright (c) 2015 UChicago Argonne LLC, as Operator of Argonne
+* Copyright (c) 2020 Triad National Security, as operator of Los Alamos 
+*     National Laboratory
+* Copyright (c) 2002 The University of Chicago, as Operator of Argonne
 *     National Laboratory.
 * Copyright (c) 2002 The Regents of the University of California, as
 *     Operator of Los Alamos National Laboratory.
@@ -15,141 +17,95 @@
 #include <stdio.h>
 
 #define epicsExportSharedSymbols
-#include "epicsAtomic.h"
+#include "epicsGuard.h"
 #include "timerPrivate.h"
-#include "errlog.h"
 
-#ifdef _MSC_VER
-#   pragma warning ( push )
-#   pragma warning ( disable:4660 )
-#endif
-
-template class epicsSingleton < timerQueueActiveMgr >;
-
-#ifdef _MSC_VER
-#   pragma warning ( pop )
-#endif
-
-epicsSingleton < timerQueueActiveMgr > timerQueueMgrEPICS;
-
-epicsTimerQueueActive::~epicsTimerQueueActive () {}
-
-epicsTimerQueueActive & epicsTimerQueueActive::allocate ( bool okToShare, unsigned threadPriority )
+epicsTimerQueueActive & epicsTimerQueueActive :: allocate ( bool okToShare, 
+                                                    unsigned threadPriority )
 {
-    epicsSingleton < timerQueueActiveMgr >::reference pMgr = 
-        timerQueueMgrEPICS.getReference ();
-    return pMgr->allocate ( pMgr, okToShare, threadPriority );
+    return timerQueueActiveMgr :: master ().
+        allocate ( okToShare, threadPriority );
 }
 
 timerQueueActive ::
-    timerQueueActive ( RefMgr & refMgr, 
-        bool okToShareIn, unsigned priority ) :
-    _refMgr ( refMgr ), queue ( *this ), thread ( *this, "timerQueue", 
+    timerQueueActive ( bool okToShareIn, unsigned priority ) :
+    m_queue ( *this ), 
+    m_thread ( *this, "timerQueue", 
         epicsThreadGetStackSize ( epicsThreadStackMedium ), priority ),
-    sleepQuantum ( epicsThreadSleepQuantum() ), okToShare ( okToShareIn ), 
-    exitFlag ( 0 ), terminateFlag ( false )
+    m_okToShare ( okToShareIn ), 
+    m_exitFlag ( false ), 
+    m_terminateFlag ( false )
 {
+    epicsGuard < epicsMutex > guard ( m_queue );
+    m_thread.start ();
 }
 
-void timerQueueActive::start ()
+timerQueueActive :: ~timerQueueActive ()
 {
-    this->thread.start ();
-}
-
-timerQueueActive::~timerQueueActive ()
-{
-    this->terminateFlag = true;
-    this->rescheduleEvent.signal ();
-    while ( !  epics::atomic::get(this->exitFlag) ) {
-        this->exitEvent.wait ( 1.0 );
+    Guard guard ( m_queue );
+    m_terminateFlag = true;
+    m_rescheduleEvent.signal ();
+    while ( ! m_exitFlag ) {
+        GuardRelease release ( guard );
+        m_exitEvent.wait ( 1.0 );
     }
     // in case other threads are waiting here also
-    this->exitEvent.signal ();
+    m_exitEvent.signal ();
 }
-
-void timerQueueActive :: _printLastChanceExceptionMessage ( 
-    const char * pExceptionTypeName,
-    const char * pExceptionContext )
-{ 
-    char date[64];
-    try {
-        epicsTime cur = epicsTime :: getMonotonic ();
-        cur.strftime ( date, sizeof ( date ), "%a %b %d %Y %H:%M:%S.%f");
-    }
-    catch ( ... ) {
-        strcpy ( date, "<UKN DATE>" );
-    }
-    errlogPrintf ( 
-        "timerQueueActive: Unexpected C++ exception \"%s\" with type \"%s\" "
-        "while processing timer queue, at %s\n",
-        pExceptionContext, pExceptionTypeName, date );
-}
-
 
 void timerQueueActive :: run ()
 {
-    epics::atomic::set(this->exitFlag, 0);
-    while ( ! this->terminateFlag ) {
-        try {
-            double delay = this->queue.process ( epicsTime::getMonotonic() );
+    Guard guard ( m_queue );
+    m_exitFlag = false;
+    while ( ! m_terminateFlag ) {
+        double delay = m_queue.process ( guard, epicsTime::getCurrent() );
+        {
+            GuardRelease release ( guard );
             debugPrintf ( ( "timer thread sleeping for %g sec (max)\n", delay ) );
-            this->rescheduleEvent.wait ( delay );
-        }
-        catch ( std :: exception & except ) {
-            _printLastChanceExceptionMessage (
-                typeid ( except ).name (), except.what () );
-            epicsThreadSleep ( 10.0 );
-        }
-        catch ( ... ) {
-            _printLastChanceExceptionMessage (
-                "catch ( ... )", "Non-standard C++ exception" );
-            epicsThreadSleep ( 10.0 );
+            m_rescheduleEvent.wait ( delay );
         }
     }
-    epics::atomic::set(this->exitFlag, 1);
-    this->exitEvent.signal (); // no access to queue after exitEvent signal
+    m_exitFlag = true; 
+    m_exitEvent.signal (); // no access to queue after exitEvent signal
 }
 
-epicsTimer & timerQueueActive::createTimer ()
+epicsTimer & timerQueueActive :: createTimer ()
 {
-    return this->queue.createTimer();
+    return m_queue.createTimer();
 }
 
-epicsTimerForC & timerQueueActive::createTimerForC ( epicsTimerCallback pCallback, void * pArg )
+TimerForC & timerQueueActive :: createTimerForC ( 
+    epicsTimerCallback pCallback, void * pArg )
 {
-    return this->queue.createTimerForC ( pCallback, pArg );
+    return m_queue.createTimerForC ( pCallback, pArg );
 }
 
-void timerQueueActive::reschedule ()
+void timerQueueActive :: reschedule ()
 {
-    this->rescheduleEvent.signal ();
+    m_rescheduleEvent.signal ();
 }
 
-double timerQueueActive::quantum ()
+void timerQueueActive :: show ( unsigned int level ) const
 {
-    return this->sleepQuantum;
-}
-
-void timerQueueActive::show ( unsigned int level ) const
-{
+    Guard guard ( const_cast < timerQueue & > ( m_queue ) );
     printf ( "EPICS threaded timer queue at %p\n", 
         static_cast <const void *> ( this ) );
     if ( level > 0u ) {
         // specifying level one here avoids recursive 
         // show callback
-        this->thread.show ( 1u );
-        this->queue.show ( level - 1u );
+        m_thread.show ( 1u );
+        m_queue.show ( guard, level - 1u );
         printf ( "reschedule event\n" );
-        this->rescheduleEvent.show ( level - 1u );
+        m_rescheduleEvent.show ( level - 1u );
         printf ( "exit event\n" );
-        this->exitEvent.show ( level - 1u );
+        m_exitEvent.show ( level - 1u );
         printf ( "exitFlag = %c, terminateFlag = %c\n",
-            epics::atomic::get(this->exitFlag) ? 'T' : 'F',
-            this->terminateFlag ? 'T' : 'F' );
+                    m_exitFlag ? 'T' : 'F',
+                    m_terminateFlag ? 'T' : 'F' );
     }
 }
 
-epicsTimerQueue & timerQueueActive::getEpicsTimerQueue () 
+epicsTimerQueue & timerQueueActive :: getEpicsTimerQueue () 
 {
     return static_cast < epicsTimerQueue &> ( * this );
 }

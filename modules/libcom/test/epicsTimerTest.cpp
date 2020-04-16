@@ -1,4 +1,6 @@
 /*************************************************************************\
+* Copyright (c) 2020 Triad National Security, as operator of Los Alamos 
+*     National Laboratory
 * Copyright (c) 2006 UChicago Argonne LLC, as Operator of Argonne
 *     National Laboratory.
 * Copyright (c) 2002 The Regents of the University of California, as
@@ -12,14 +14,15 @@
  *              505 665 1831
  */
 
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
 
 #include "epicsTimer.h"
 #include "epicsEvent.h"
-#include "epicsAssert.h"
+#include "epicsMutex.h"
 #include "epicsGuard.h"
+#include "epicsAssert.h"
 #include "tsFreeList.h"
 #include "epicsUnitTest.h"
 #include "testMain.h"
@@ -27,199 +30,283 @@
 #define verify(exp) ((exp) ? (void)0 : \
     epicsAssert(__FILE__, __LINE__, #exp, epicsAssertAuthor))
 
-class notified : public epicsTimerNotify
-{
+using std :: sqrt;
+using std :: nothrow;
+
+static epicsEvent expireEvent;
+static epicsMutex globalMutex;
+
+class DelayVerify : public epicsTimerNotify {
 public:
-    bool done;
-    notified() : epicsTimerNotify(), done(false) {}
-
-    expireStatus expire(const epicsTime &currentTime)
-    {done=true; return expireStatus(noRestart);}
-};
-
-void testRefCount()
-{
-    notified action;
-
-    epicsTimerQueueActive *Q1, *Q2;
-    epicsTimer *T1, *T2;
-
-    Q1 = &epicsTimerQueueActive::allocate ( true, epicsThreadPriorityMin );
-
-    T1 = &Q1->createTimer();
-    //timer->start(action, 0.0);
-
-    Q2 = &epicsTimerQueueActive::allocate ( true, epicsThreadPriorityMin );
-
-    testOk1(Q1==Q2);
-
-    T2 = &Q2->createTimer();
-
-    T2->destroy();
-    Q2->release();
-
-    T1->destroy();
-    Q1->release();
-}
-
-static const double delayVerifyOffset = 1.0; // sec 
-
-class delayVerify : public epicsTimerNotify {
-public:
-    delayVerify ( double expectedDelay, epicsTimerQueue & );
-    void start ( const epicsTime &expireTime );
-    void setBegin ( const epicsTime & );
+    DelayVerify ( double expectedDelay, size_t iterations, 
+                                        epicsTimerQueue & );
+    ~DelayVerify ();
+    bool cancel ();
+    unsigned start ();
     double delay () const;
     double checkError () const;
-protected:
-    virtual ~delayVerify ();
-private:
-    epicsTimer &timer;
-    epicsTime beginStamp;
-    epicsTime expireStamp;
-    double expectedDelay;
     expireStatus expire ( const epicsTime & );
-    delayVerify ( const delayVerify & );
-    delayVerify & operator = ( const delayVerify & );
+    size_t iterations () const;
+    size_t startCount () const;
+    size_t expireCount () const;
+    static unsigned expirePendingCount;
+    static const double m_offset;  
+private:
+    epicsTimer & m_timer;
+    epicsTime m_beginStamp;
+    epicsTime m_expireStamp;
+    const double m_expectedDelay;
+    const size_t m_iterations;
+    size_t m_iterationsLeft;
+    size_t m_startCount;
+    size_t m_expireCount;
+    bool m_canceled;
+    DelayVerify ( const DelayVerify & );
+    DelayVerify & operator = ( const DelayVerify & );
 };
 
-static volatile unsigned expireCount;
-static epicsEvent expireEvent;
+const double DelayVerify :: m_offset = 1.0; // sec 
+unsigned DelayVerify :: expirePendingCount = 0u;
 
-delayVerify::delayVerify ( double expectedDelayIn, epicsTimerQueue &queueIn ) :
-    timer ( queueIn.createTimer() ), expectedDelay ( expectedDelayIn )
+DelayVerify :: DelayVerify ( double expectedDelayIn, 
+                                size_t iterations,
+                                epicsTimerQueue & queue ) :
+    m_timer ( queue.createTimer() ), 
+    m_expectedDelay ( expectedDelayIn ),
+    m_iterations ( iterations ),
+    m_iterationsLeft ( iterations ),
+    m_startCount ( 0u ),
+    m_expireCount ( 0u ),
+    m_canceled ( false )
 {
 }
 
-delayVerify::~delayVerify ()
+DelayVerify :: ~DelayVerify ()
 {
-    this->timer.destroy ();
+    m_timer.destroy ();
 }
 
-inline void delayVerify::setBegin ( const epicsTime &beginIn )
+inline double DelayVerify :: delay () const
 {
-    this->beginStamp = beginIn;
+    return m_expectedDelay;
 }
 
-inline double delayVerify::delay () const
+inline size_t DelayVerify :: iterations () const
 {
-    return this->expectedDelay;
+    return m_iterations;
 }
 
-double delayVerify::checkError () const
+inline size_t DelayVerify :: startCount () const
 {
-    const double messageThresh = 5.0; // percent
-    double actualDelay =  this->expireStamp - this->beginStamp;
-    double measuredError = actualDelay - this->expectedDelay;
-    double percentError = 100.0 * fabs ( measuredError ) / this->expectedDelay;
-    if(testImpreciseTiming())
-        testTodoBegin("imprecise");
-    testOk ( percentError < messageThresh, "%f < %f, delay = %f s, error = %f s (%.1f %%)",
-             percentError, messageThresh,
-             this->expectedDelay, measuredError, percentError  );
-    if(testImpreciseTiming())
-        testTodoEnd();
-    return measuredError;
+    return m_startCount;
 }
 
-inline void delayVerify::start ( const epicsTime &expireTime )
+inline size_t DelayVerify :: expireCount () const
 {
-    this->timer.start ( *this, expireTime );
+    return m_expireCount;
 }
 
-epicsTimerNotify::expireStatus delayVerify::expire ( const epicsTime &currentTime )
+double DelayVerify :: checkError () const
 {
-    this->expireStamp = currentTime;
-    if ( --expireCount == 0u ) {
+    static const double messageThresh = 
+        2.0 * epicsThreadSleepQuantum (); // sec 
+    if ( m_canceled ) {
+        testOk1 ( m_canceled );
+        return 0.0;
+    }
+    double actualDelay =  m_expireStamp - m_beginStamp;
+    double errMeasured = actualDelay - m_expectedDelay;
+    double errMagnitude = fabs ( errMeasured );
+    double errPercent = 
+        100.0 * errMagnitude / m_expectedDelay;
+    testOk ( errMagnitude < messageThresh,
+            "%f mS < %f mS, delay = %f s, (%.1f %%)", 
+            errMagnitude * 1000.0, 
+            messageThresh * 1000.0,
+            m_expectedDelay, 
+            errPercent );
+    return errMeasured;
+}
+
+inline bool DelayVerify :: cancel ()
+{
+    m_canceled = m_timer.cancel ();
+    return m_canceled;
+}
+
+inline unsigned DelayVerify :: start ()
+{
+    epicsGuard < epicsMutex > gd ( globalMutex );
+    m_beginStamp = epicsTime::getCurrent ();
+    m_startCount++;
+    return m_timer.start ( *this, m_beginStamp + m_expectedDelay );
+}
+
+epicsTimerNotify :: expireStatus 
+    DelayVerify :: expire ( const epicsTime & currentTime )
+{
+    epicsGuard < epicsMutex > gd ( globalMutex );
+    m_expireCount++;
+    m_expireStamp = currentTime;
+    assert ( DelayVerify :: expirePendingCount > 0u );
+    if ( --DelayVerify :: expirePendingCount == 0u ) {
         expireEvent.signal ();
     }
-    return noRestart;
+    if ( m_iterationsLeft > 1u ) {
+        m_iterationsLeft--;
+        m_beginStamp = currentTime;
+        return expireStatus ( restart, m_expectedDelay );
+    }
+    else {
+        return noRestart;
+    }
 }
+
+static const unsigned nAccuracyTimers = 100000u;
 
 //
 // verify reasonable timer interval accuracy
 //
 void testAccuracy ()
 {
-    static const unsigned nTimers = 25u;
-    delayVerify *pTimers[nTimers];
-    unsigned i;
+    DelayVerify * pTimers[nAccuracyTimers];
     unsigned timerCount = 0;
+    unsigned i;
 
-    testDiag ( "Testing timer accuracy" );
+    testDiag ( "Testing timer accuracy N timers = %u", nAccuracyTimers );
 
-    epicsTimerQueueActive &queue = 
+    epicsTimerQueueActive & queue = 
         epicsTimerQueueActive::allocate ( true, epicsThreadPriorityMax );
 
-    for ( i = 0u; i < nTimers; i++ ) {
-        pTimers[i] = new delayVerify ( i * 0.1 + delayVerifyOffset, queue );
+    {
+        epicsGuard < epicsMutex > gd ( globalMutex );
+        DelayVerify :: expirePendingCount = 0u;
+    }
+
+    const size_t nAccuracyTimersD2 = nAccuracyTimers / 2u;
+    const size_t nAccuracyTimersD4 = nAccuracyTimers / 4u;
+    const size_t nAccuracyTimersD2PD4 = 
+                        nAccuracyTimersD2 + nAccuracyTimersD4;
+    for ( i = 0u; i < nAccuracyTimers; i++ ) {
+        double expectedDelay = i * static_cast < unsigned > ( rand () );
+        expectedDelay /= RAND_MAX;
+        expectedDelay += DelayVerify :: m_offset;
+        size_t nIterations;
+        if ( i < nAccuracyTimersD4 ) {
+            nIterations = 3;
+        }
+        else {
+            nIterations = 1;
+        }
+        pTimers[i] = new ( nothrow ) 
+                    DelayVerify ( expectedDelay, nIterations, queue );
         timerCount += pTimers[i] ? 1 : 0;
     }
-    testOk1 ( timerCount == nTimers );
+    testOk1 ( timerCount == nAccuracyTimers );
 
-    expireCount = nTimers;
-    for ( i = 0u; i < nTimers; i++ ) {
-        epicsTime cur = epicsTime::getMonotonic ();
-        pTimers[i]->setBegin ( cur );
-        pTimers[i]->start ( cur + pTimers[i]->delay () );
+    size_t totStarted = 0u;
+    size_t totExpireExpected = 0u;
+    for ( i = 0u; i < nAccuracyTimers; i++ ) {
+        const size_t nNewStarted = pTimers[i]->start ();
+        const size_t nNewTot = nNewStarted * pTimers[i]->iterations ();
+        totStarted += nNewStarted;
+        epicsGuard < epicsMutex > gd ( globalMutex );
+        DelayVerify :: expirePendingCount += nNewTot;
+        totExpireExpected += nNewTot; 
     }
-    while ( expireCount != 0u ) {
-        expireEvent.wait ();
+    testOk1 ( totStarted == nAccuracyTimers );
+
+    // restart half of them, to test the accuracy on that path
+    for ( i = nAccuracyTimersD2PD4; i < nAccuracyTimers; i++ ) {
+        const size_t nNewExpire = pTimers[i]->start ();
+        epicsGuard < epicsMutex > gd ( globalMutex );
+        DelayVerify :: expirePendingCount += nNewExpire;
+        totExpireExpected += nNewExpire; 
     }
-    double averageMeasuredError = 0.0;
-    for ( i = 0u; i < nTimers; i++ ) {
-        averageMeasuredError += pTimers[i]->checkError ();
+    // cancel one quarter of them
+    for ( i = nAccuracyTimersD2; i < nAccuracyTimersD2PD4; i++ ) {
+        if ( pTimers[i]->cancel () ) {
+            epicsGuard < epicsMutex > gd ( globalMutex );
+            totExpireExpected--;
+            DelayVerify :: expirePendingCount--;
+        }
     }
-    averageMeasuredError /= nTimers;
-    testDiag ("average timer delay error %f ms", 
-        averageMeasuredError * 1000 );
+    testDiag ( "Waiting for %u timer callbacks", 
+                DelayVerify :: expirePendingCount );
+
+    // wait for all of them to finish
+    {
+        epicsGuard < epicsMutex > gd ( globalMutex );
+        while ( DelayVerify :: expirePendingCount != 0u ) {
+            epicsGuardRelease < epicsMutex > gr ( gd );
+            expireEvent.wait ();
+        }
+    }
+    double E = 0.0;
+    double EE = 0.0;
+    for ( i = 0u; i < nAccuracyTimers; i++ ) {
+        const double err = pTimers[i]->checkError ();
+        E += err;
+        EE += err * err; 
+    }
+    const double mean = E / nAccuracyTimers;
+    const double stdDev = sqrt ( EE / nAccuracyTimers - mean * mean );
+    testDiag ( "timer delay error mean=%f std dev=%f ms", 
+                 mean * 1000.0, stdDev * 1000.0 );
+    testOk1 ( fabs ( mean ) < 5e-3 ); // seconds
+    testOk1 ( stdDev < 5e-3 ); // seconds
+    unsigned nExpire = 0u;
+    for ( i = 0u; i < nAccuracyTimers; i++ ) {
+        nExpire += pTimers[i]->expireCount ();
+        delete pTimers[i];
+    }
+    testOk1 ( nExpire == totExpireExpected ); 
     queue.release ();
 }
 
-
-class cancelVerify : public epicsTimerNotify {
+class CancelVerify : public epicsTimerNotify {
 public:
-    cancelVerify ( epicsTimerQueue & );
+    CancelVerify ( epicsTimerQueue & );
+    ~CancelVerify ();
     void start ( const epicsTime &expireTime );
     void cancel ();
+    expireStatus expire ( const epicsTime & );
     static unsigned cancelCount;
     static unsigned expireCount;
-protected:
-    virtual ~cancelVerify ();
 private:
-    epicsTimer &timer;
-    expireStatus expire ( const epicsTime & );
-    cancelVerify ( const cancelVerify & );
-    cancelVerify & operator = ( const cancelVerify & );
+    epicsTimer & m_timer;
+    CancelVerify ( const CancelVerify & );
+    CancelVerify & operator = ( const CancelVerify & );
 };
 
-unsigned cancelVerify::cancelCount;
-unsigned cancelVerify::expireCount;
+unsigned CancelVerify :: cancelCount;
+unsigned CancelVerify :: expireCount;
 
-cancelVerify::cancelVerify ( epicsTimerQueue &queueIn ) :
-    timer ( queueIn.createTimer () )
+CancelVerify :: CancelVerify ( epicsTimerQueue &queueIn ) :
+    m_timer ( queueIn.createTimer () )
 {
 }
 
-cancelVerify::~cancelVerify ()
+CancelVerify :: ~CancelVerify ()
 {
-    this->timer.destroy ();
+    m_timer.destroy ();
 }
 
-inline void cancelVerify::start ( const epicsTime &expireTime )
+inline void CancelVerify :: start ( const epicsTime &expireTime )
 {
-    this->timer.start ( *this, expireTime );
+    m_timer.start ( *this, expireTime );
 }
 
-inline void cancelVerify::cancel ()
+inline void CancelVerify :: cancel ()
 {
-    this->timer.cancel ();
-    ++cancelVerify::cancelCount;
+    m_timer.cancel ();
+    ++CancelVerify::cancelCount;
 }
 
-epicsTimerNotify::expireStatus cancelVerify::expire ( const epicsTime & )
+epicsTimerNotify :: expireStatus 
+    CancelVerify :: expire ( const epicsTime & )
 {
-    ++cancelVerify::expireCount;
+    ++CancelVerify :: expireCount;
     double root = 3.14159;
     for ( unsigned i = 0u; i < 1000; i++ ) {
         root = sqrt ( root );
@@ -233,86 +320,87 @@ epicsTimerNotify::expireStatus cancelVerify::expire ( const epicsTime & )
 void testCancel ()
 {
     static const unsigned nTimers = 25u;
-    cancelVerify *pTimers[nTimers];
+    CancelVerify *pTimers[nTimers];
     unsigned i;
     unsigned timerCount = 0;
 
-    cancelVerify::cancelCount = 0;
-    cancelVerify::expireCount = 0;
+    CancelVerify :: cancelCount = 0;
+    CancelVerify :: expireCount = 0;
 
     testDiag ( "Testing timer cancellation" );
 
     epicsTimerQueueActive &queue = 
-        epicsTimerQueueActive::allocate ( true, epicsThreadPriorityMin );
+        epicsTimerQueueActive :: allocate ( true, epicsThreadPriorityMin );
 
     for ( i = 0u; i < nTimers; i++ ) {
-        pTimers[i] = new cancelVerify ( queue );
+        pTimers[i] = new CancelVerify ( queue );
         timerCount += pTimers[i] ? 1 : 0;
     }
     testOk1 ( timerCount == nTimers );
-    if ( ! testOk1 ( cancelVerify::expireCount == 0 ) )
-        testDiag ( "expireCount = %u", cancelVerify::expireCount );
-    if ( ! testOk1 ( cancelVerify::cancelCount == 0 ) )
-        testDiag ( "cancelCount = %u", cancelVerify::cancelCount );
+    if ( ! testOk1 ( CancelVerify :: expireCount == 0 ) )
+        testDiag ( "expireCount = %u", CancelVerify :: expireCount );
+    if ( ! testOk1 ( CancelVerify :: cancelCount == 0 ) )
+        testDiag ( "cancelCount = %u", CancelVerify :: cancelCount );
 
     testDiag ( "starting %d timers", nTimers );
-    epicsTime exp = epicsTime::getMonotonic () + 4.0;
+    epicsTime exp = epicsTime :: getCurrent () + 4.0;
     for ( i = 0u; i < nTimers; i++ ) {
         pTimers[i]->start ( exp );
     }
-    testOk1 ( cancelVerify::expireCount == 0 );
-    testOk1 ( cancelVerify::cancelCount == 0 );
+    testOk1 ( CancelVerify :: expireCount == 0 );
+    testOk1 ( CancelVerify :: cancelCount == 0 );
 
     testDiag ( "cancelling timers" );
     for ( i = 0u; i < nTimers; i++ ) {
         pTimers[i]->cancel ();
+        delete pTimers[i];
     }
-    testOk1 ( cancelVerify::expireCount == 0 );
-    testOk1 ( cancelVerify::cancelCount == nTimers );
+    testOk1 ( CancelVerify :: expireCount == 0 );
+    testOk1 ( CancelVerify :: cancelCount == nTimers );
 
     testDiag ( "waiting until after timers should have expired" );
     epicsThreadSleep ( 5.0 );
-    testOk1 ( cancelVerify::expireCount == 0 );
-    testOk1 ( cancelVerify::cancelCount == nTimers );
+    testOk1 ( CancelVerify :: expireCount == 0 );
+    testOk1 ( CancelVerify :: cancelCount == nTimers );
 
     epicsThreadSleep ( 1.0 );
     queue.release ();
 }
 
-
-class expireDestroyVerify : public epicsTimerNotify {
+class ExpireDestroyVerify : public epicsTimerNotify {
 public:
-    expireDestroyVerify ( epicsTimerQueue & );
+    ExpireDestroyVerify ( epicsTimerQueue & );
     void start ( const epicsTime &expireTime );
+    expireStatus expire ( const epicsTime & );
     static unsigned destroyCount;
 protected:
-    virtual ~expireDestroyVerify ();
+    virtual ~ExpireDestroyVerify ();
 private:
-    epicsTimer & timer;
-    expireStatus expire ( const epicsTime & );
-    expireDestroyVerify ( const expireDestroyVerify & );
-    expireDestroyVerify & operator = ( const expireDestroyVerify & );
+    epicsTimer & m_timer;
+    ExpireDestroyVerify ( const ExpireDestroyVerify & );
+    ExpireDestroyVerify & operator = ( const ExpireDestroyVerify & );
 };
 
-unsigned expireDestroyVerify::destroyCount;
+unsigned ExpireDestroyVerify :: destroyCount;
 
-expireDestroyVerify::expireDestroyVerify ( epicsTimerQueue & queueIn ) :
-    timer ( queueIn.createTimer () )
+ExpireDestroyVerify :: ExpireDestroyVerify ( epicsTimerQueue & queueIn ) :
+    m_timer ( queueIn.createTimer () )
 {
 }
 
-expireDestroyVerify::~expireDestroyVerify ()
+ExpireDestroyVerify :: ~ExpireDestroyVerify ()
 {
-    this->timer.destroy ();
-    ++expireDestroyVerify::destroyCount;
+    m_timer.destroy ();
+    ++ExpireDestroyVerify :: destroyCount;
 }
 
-inline void expireDestroyVerify::start ( const epicsTime & expireTime )
+inline void ExpireDestroyVerify :: start ( const epicsTime & expireTime )
 {
-    this->timer.start ( *this, expireTime );
+    m_timer.start ( *this, expireTime );
 }
 
-epicsTimerNotify::expireStatus expireDestroyVerify::expire ( const epicsTime & )
+epicsTimerNotify :: expireStatus 
+        ExpireDestroyVerify :: expire ( const epicsTime & )
 {
     delete this;
     return noRestart;
@@ -324,25 +412,25 @@ epicsTimerNotify::expireStatus expireDestroyVerify::expire ( const epicsTime & )
 void testExpireDestroy ()
 {
     static const unsigned nTimers = 25u;
-    expireDestroyVerify *pTimers[nTimers];
+    ExpireDestroyVerify *pTimers[nTimers];
     unsigned i;
     unsigned timerCount = 0;
-    expireDestroyVerify::destroyCount = 0;
+    ExpireDestroyVerify :: destroyCount = 0;
 
     testDiag ( "Testing timer destruction in expire()" );
 
     epicsTimerQueueActive &queue = 
-        epicsTimerQueueActive::allocate ( true, epicsThreadPriorityMin );
+        epicsTimerQueueActive :: allocate ( true, epicsThreadPriorityMin );
 
     for ( i = 0u; i < nTimers; i++ ) {
-        pTimers[i] = new expireDestroyVerify ( queue );
+        pTimers[i] = new ExpireDestroyVerify ( queue );
         timerCount += pTimers[i] ? 1 : 0;
     }
     testOk1 ( timerCount == nTimers );
-    testOk1 ( expireDestroyVerify::destroyCount == 0 );
+    testOk1 ( ExpireDestroyVerify :: destroyCount == 0 );
 
     testDiag ( "starting %d timers", nTimers );
-    epicsTime cur = epicsTime::getMonotonic ();
+    epicsTime cur = epicsTime :: getCurrent ();
     for ( i = 0u; i < nTimers; i++ ) {
         pTimers[i]->start ( cur );
     }
@@ -350,63 +438,63 @@ void testExpireDestroy ()
     testDiag ( "waiting until all timers should have expired" );
     epicsThreadSleep ( 5.0 );
 
-    testOk1 ( expireDestroyVerify::destroyCount == nTimers );
+    testOk1 ( ExpireDestroyVerify :: destroyCount == nTimers );
     queue.release ();
 }
 
 
-class periodicVerify : public epicsTimerNotify {
+class PeriodicVerify : public epicsTimerNotify {
 public:
-    periodicVerify ( epicsTimerQueue & );
+    PeriodicVerify ( epicsTimerQueue & );
+    ~PeriodicVerify ();
     void start ( const epicsTime &expireTime );
     void cancel ();
-    bool verifyCount ();
-protected:
-    virtual ~periodicVerify ();
-private:
-    epicsTimer &timer;
-    unsigned nExpire;
-    bool cancelCalled;
     expireStatus expire ( const epicsTime & );
-    periodicVerify ( const periodicVerify & );
-    periodicVerify & operator = ( const periodicVerify & );
+    bool verifyCount ();
+private:
+    epicsTimer & m_timer;
+    unsigned m_nExpire;
+    bool m_cancelCalled;
+    PeriodicVerify ( const PeriodicVerify & );
+    PeriodicVerify & operator = ( const PeriodicVerify & );
 };
 
-periodicVerify::periodicVerify ( epicsTimerQueue & queueIn ) :
-    timer ( queueIn.createTimer () ), nExpire ( 0u ), 
-        cancelCalled ( false )
+PeriodicVerify :: PeriodicVerify ( epicsTimerQueue & queueIn ) :
+    m_timer ( queueIn.createTimer () ), m_nExpire ( 0u ), 
+        m_cancelCalled ( false )
 {
 }
 
-periodicVerify::~periodicVerify ()
+PeriodicVerify :: ~PeriodicVerify ()
 {
-    this->timer.destroy ();
+    m_timer.destroy ();
 }
 
-inline void periodicVerify::start ( const epicsTime &expireTime )
+inline void PeriodicVerify :: start ( const epicsTime &expireTime )
 {
-    this->timer.start ( *this, expireTime );
+    m_timer.start ( *this, expireTime );
 }
 
-inline void periodicVerify::cancel ()
+inline void PeriodicVerify :: cancel ()
 {
-    this->timer.cancel ();
-    this->cancelCalled = true;
+    m_timer.cancel ();
+    m_cancelCalled = true;
 }
 
-inline bool periodicVerify::verifyCount ()
+inline bool PeriodicVerify :: verifyCount ()
 {
-    return ( this->nExpire > 1u );
+    return ( m_nExpire > 1u );
 }
 
-epicsTimerNotify::expireStatus periodicVerify::expire ( const epicsTime & )
+epicsTimerNotify :: expireStatus 
+        PeriodicVerify :: expire ( const epicsTime & )
 {
-    this->nExpire++;
+    m_nExpire++;
     double root = 3.14159;
     for ( unsigned i = 0u; i < 1000; i++ ) {
         root = sqrt ( root );
     }
-    verify ( ! this->cancelCalled );
+    verify ( ! m_cancelCalled );
     double delay = rand ();
     delay = delay / RAND_MAX;
     delay /= 10.0;
@@ -419,23 +507,23 @@ epicsTimerNotify::expireStatus periodicVerify::expire ( const epicsTime & )
 void testPeriodic ()
 {
     static const unsigned nTimers = 25u;
-    periodicVerify *pTimers[nTimers];
+    PeriodicVerify *pTimers[nTimers];
     unsigned i;
     unsigned timerCount = 0;
 
     testDiag ( "Testing periodic timers" );
 
     epicsTimerQueueActive &queue = 
-        epicsTimerQueueActive::allocate ( true, epicsThreadPriorityMin );
+        epicsTimerQueueActive :: allocate ( true, epicsThreadPriorityMin );
 
     for ( i = 0u; i < nTimers; i++ ) {
-        pTimers[i] = new periodicVerify ( queue );
+        pTimers[i] = new PeriodicVerify ( queue );
         timerCount += pTimers[i] ? 1 : 0;
     }
     testOk1 ( timerCount == nTimers );
 
     testDiag ( "starting %d timers", nTimers );
-    epicsTime cur = epicsTime::getMonotonic ();
+    epicsTime cur = epicsTime::getCurrent ();
     for ( i = 0u; i < nTimers; i++ ) {
         pTimers[i]->start ( cur );
     }
@@ -447,16 +535,16 @@ void testPeriodic ()
     for ( i = 0u; i < nTimers; i++ ) {
         notWorking |= ! pTimers[i]->verifyCount ();
         pTimers[i]->cancel ();
+        delete pTimers[i];
     }
     testOk( ! notWorking, "All timers expiring" );
     epicsThreadSleep ( 1.0 );
     queue.release ();
 }
 
-MAIN(epicsTimerTest)
+MAIN ( epicsTimerTest )
 {
-    testPlan(41);
-    testRefCount();
+    testPlan(19+nAccuracyTimers);
     testAccuracy ();
     testCancel ();
     testExpireDestroy ();

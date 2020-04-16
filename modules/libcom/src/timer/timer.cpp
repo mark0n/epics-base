@@ -1,11 +1,12 @@
 /*************************************************************************\
+* Copyright (c) 2020 Triad National Security, as operator of Los Alamos 
+*     National Laboratory
 * Copyright (c) 2002 The University of Chicago, as Operator of Argonne
 *     National Laboratory.
 * Copyright (c) 2002 The Regents of the University of California, as
 *     Operator of Los Alamos National Laboratory.
-* EPICS BASE Versions 3.13.7
-* and higher are distributed subject to a Software License Agreement found
-* in file LICENSE that is included with this distribution. 
+* EPICS BASE is distributed subject to a Software License Agreement found
+* in file LICENSE that is included with this distribution.
 \*************************************************************************/
 
 /*
@@ -17,227 +18,207 @@
 #include <typeinfo>
 #include <string>
 #include <stdexcept>
-#include <stdio.h>
+#include <cstdio>
 
 #define epicsExportSharedSymbols
-#include "epicsGuard.h"
 #include "timerPrivate.h"
 #include "errlog.h"
 
-#ifdef _MSC_VER
-#   pragma warning ( push )
-#   pragma warning ( disable:4660 )
-#endif
-
-template class tsFreeList < timer, 0x20 >;
-
-#ifdef _MSC_VER
-#   pragma warning ( pop )
-#endif
-
-timer::timer ( timerQueue & queueIn ) :
-    queue ( queueIn ), curState ( stateLimbo ), pNotify ( 0 ) 
+Timer :: Timer ( timerQueue & queueIn ) :
+    m_queue ( queueIn ), 
+    m_curState ( stateLimbo ), 
+    m_pNotify ( 0 ),
+    m_index ( m_invalidIndex ) 
 {
 }
 
-timer::~timer ()
+Timer :: ~Timer ()
 {
     this->cancel ();
 }
 
-void timer::destroy () 
+void Timer :: destroy () 
 {
-    timerQueue & queueTmp = this->queue;
-    this->~timer ();
-    queueTmp.timerFreeList.release ( this );
+    delete this;    
 }
 
-void timer::start ( epicsTimerNotify & notify, double delaySeconds )
+unsigned Timer :: start ( epicsTimerNotify & notify, double delaySeconds )
 {
-    this->start ( notify, epicsTime::getMonotonic () + delaySeconds );
-}
-
-void timer::start ( epicsTimerNotify & notify, const epicsTime & expire )
-{
-    epicsGuard < epicsMutex > locker ( this->queue.mutex );
-    this->privateStart ( notify, expire );
-}
-
-void timer::privateStart ( epicsTimerNotify & notify, const epicsTime & expire )
-{
-    this->pNotify = & notify;
-    this->exp = expire - ( this->queue.notify.quantum () / 2.0 );
-
-    bool reschedualNeeded = false;
-    if ( this->curState == stateActive ) {
-        // above expire time and notify will override any restart parameters
-        // that may be returned from the timer expire callback
-        return;
+    const epicsTime current = epicsTime :: getCurrent ();
+    const epicsTime exp = current + delaySeconds;
+    const Timer :: M_StartReturn sr = m_privateStart ( notify, exp );
+    // we are careful to wakeup the timer queue thread after
+    // we nolonger hold the lock
+    if ( sr.resched ) {
+        m_queue.m_notify.reschedule ();
     }
-    else if ( this->curState == statePending ) {
-        this->queue.timerList.remove ( *this );
-        if ( this->queue.timerList.first() == this && 
-                this->queue.timerList.count() > 0 ) {
-            reschedualNeeded = true;
+    return sr.numNew;
+}
+
+unsigned Timer :: start ( epicsTimerNotify & notify, 
+                            const epicsTime & expire )
+{
+    Timer :: M_StartReturn sr = m_privateStart ( notify, expire );
+    // we are careful to wakeup the timer queue thread after
+    // we nolonger hold the lock
+    if ( sr.resched ) {
+        m_queue.m_notify.reschedule ();
+    }
+    return sr.numNew;
+}
+
+Timer :: M_StartReturn 
+    Timer :: m_privateStart ( epicsTimerNotify & notify, 
+                                    const epicsTime & expire )
+{
+    Timer :: M_StartReturn sr;
+    Guard locker ( m_queue );
+    m_pNotify = & notify;
+    if ( m_curState == statePending ) {
+        if ( m_queue.m_pExpTmr == this ) {
+            // new expire time and notify will override 
+            // any restart parameters that may be returned 
+            // from the timer expire callback
+            sr.resched = false;
+            sr.numNew = 1u;
+            return sr;
+        }
+        sr.numNew = 0u;
+        const epicsTime oldExp = m_queue.m_heap.front ()->m_exp;
+        m_exp = expire;
+        if ( ! m_queue.m_fixParent ( m_index ) ) {
+            m_queue.m_fixChildren ( m_index );
+        }
+        sr.resched = ( oldExp > m_queue.m_heap.front ()->m_exp ); 
+    }
+    else {
+        sr.numNew = 1u;
+        m_curState = Timer :: statePending;
+        m_index = m_queue.m_heap.size ();
+        if ( m_index > 0u ) {
+            const epicsTime oldExp = m_queue.m_heap.front ()->m_exp;
+            m_exp = expire;
+            m_queue.m_heap.push_back ( this );
+            m_queue.m_fixParent ( m_index );
+            sr.resched = ( oldExp > m_queue.m_heap.front ()->m_exp ); 
+        }
+        else {
+            m_exp = expire;
+            m_queue.m_heap.push_back ( this );
+            sr.resched = true;
         }
     }
-
-#   ifdef DEBUG
-        unsigned preemptCount=0u;
-#   endif
-
-    //
-    // insert into the pending queue
-    //
-    // Finds proper time sorted location using a linear search.
-    //
-    // **** this should use a binary tree ????
-    //
-    tsDLIter < timer > pTmr = this->queue.timerList.lastIter ();
-    while ( true ) {
-        if ( ! pTmr.valid () ) {
-            //
-            // add to the beginning of the list
-            //
-            this->queue.timerList.push ( *this );
-            reschedualNeeded = true;
-            break;
-        }
-        if ( pTmr->exp <= this->exp ) {
-            //
-            // add after the item found that expires earlier
-            //
-            this->queue.timerList.insertAfter ( *this, *pTmr );
-            break;
-        }
-#       ifdef DEBUG
-            preemptCount++;
-#       endif
-        --pTmr;
-    }
-
-    this->curState = timer::statePending;
-
-    if ( reschedualNeeded ) {
-        this->queue.notify.reschedule ();
-    }
-    
-#   if defined(DEBUG) && 0
-        this->show ( 10u );
-        this->queue.show ( 10u );
-#   endif
-
-    debugPrintf ( ("Start of \"%s\" with delay %f at %p preempting %u\n", 
-        typeid ( this->notify ).name (), 
-        expire - epicsTime::getMonotonic (), 
-        this, preemptCount ) );
+    debugPrintf ( ("Start of \"%s\" with delay %f at %p\n",
+                    m_pNotify ? 
+                        typeid ( *m_pNotify ).name () :
+                        typeid ( m_pNotify ).name (),
+                    m_exp - epicsTime::getCurrent (),
+                    this ) );
+    return sr;
 }
 
-void timer::cancel ()
+void Timer :: m_remove ( Guard & guard )
 {
-    bool reschedual = false;
-    bool wakeupCancelBlockingThreads = false;
+    Timer * const pMoved = m_queue.m_heap.back ();
+    m_queue.m_heap.pop_back ();
+    if ( m_index != m_queue.m_heap.size () ) {
+        const size_t oldIndex = m_index;
+        m_queue.m_heap[oldIndex] = pMoved;
+        pMoved->m_index = oldIndex;
+        if ( ! m_queue.m_fixParent ( oldIndex ) ) {
+            m_queue.m_fixChildren ( oldIndex );
+        }
+    }
+    m_index = m_invalidIndex;
+    m_curState = stateLimbo;
+}
+
+bool Timer :: cancel ()
+{
+    bool wasPending = false;
+    bool reschedule = false;
     {
-        epicsGuard < epicsMutex > locker ( this->queue.mutex );
-        this->pNotify = 0;
-        if ( this->curState == statePending ) {
-            this->queue.timerList.remove ( *this );
-            this->curState = stateLimbo;
-            if ( this->queue.timerList.first() == this && 
-                    this->queue.timerList.count() > 0 ) {
-                reschedual = true;
-            }
-        }
-        else if ( this->curState == stateActive ) {
-            this->queue.cancelPending = true;
-            this->curState = timer::stateLimbo;
-            if ( this->queue.processThread != epicsThreadGetIdSelf() ) {
-                // make certain timer expire() does not run after cancel () returns,
-                // but dont require that lock is applied while calling expire()
-                while ( this->queue.cancelPending && 
-                        this->queue.pExpireTmr == this ) {
-                    epicsGuardRelease < epicsMutex > autoRelease ( locker );
-                    this->queue.cancelBlockingEvent.wait ();
+        Guard guard ( m_queue );
+        if ( m_curState == statePending ) {
+            const epicsTime oldExp = m_queue.m_heap.front ()->m_exp;
+            m_remove ( guard );
+            m_queue.m_cancelPending = ( m_queue.m_pExpTmr == this );
+            if ( m_queue.m_cancelPending ) {
+                if ( m_queue.m_processThread != epicsThreadGetIdSelf() ) {
+                    // 1) make certain timer expire cllback does not run 
+                    // after this cancel method returns
+                    // 2) dont require that lock is applied while calling 
+                    // expire callback 
+                    // 3) assume that timer could be deleted in its 
+                    // expire callback so we dont touch this after lock
+                    // is released
+                    timerQueue & queue = m_queue;
+                    while ( queue.m_cancelPending && 
+                                        queue.m_pExpTmr == this ) {
+                        GuardRelease unguard ( guard );
+                        queue.m_cancelBlockingEvent.wait ();
+                    }
+                    // in case other threads are waiting
+                    queue.m_cancelBlockingEvent.signal ();
                 }
-                // in case other threads are waiting
-                wakeupCancelBlockingThreads = true;
+            }
+            else {
+                wasPending = true;
+                if ( oldExp > m_queue.m_heap.front ()->m_exp ) {
+                    reschedule = true;
+                }
             }
         }
     }
-    if ( reschedual ) {
-        this->queue.notify.reschedule ();
+    // we are careful to wakeup the timer queue thread after
+    // we nolonger hold the lock
+    if ( reschedule ) {
+        m_queue.m_notify.reschedule ();
     }
-    if ( wakeupCancelBlockingThreads ) {
-        this->queue.cancelBlockingEvent.signal ();
-    }
+    return wasPending;
 }
 
-epicsTimer::expireInfo timer::getExpireInfo () const
+epicsTimer :: expireInfo Timer :: getExpireInfo () const
 {
     // taking a lock here guarantees that users will not 
     // see brief intervals when a timer isnt active because
     // it is is canceled when start is called
-    epicsGuard < epicsMutex > locker ( this->queue.mutex );
-    if ( this->curState == statePending || this->curState == stateActive ) {
-        return expireInfo ( true, this->exp );
+    Guard locker ( m_queue );
+    if ( m_curState == statePending ) {
+        return expireInfo ( true, m_exp );
     }
     return expireInfo ( false, epicsTime() );
 }
 
-void timer::show ( unsigned int level ) const
+void Timer :: show ( unsigned int level ) const
 {
-    epicsGuard < epicsMutex > locker ( this->queue.mutex );
+    Guard locker ( m_queue );
     double delay;
-    if ( this->curState == statePending || this->curState == stateActive ) {
+    if ( m_curState == statePending ) {
         try {
-            delay = this->exp - epicsTime::getMonotonic();
+            delay = m_exp - epicsTime::getCurrent();
         }
         catch ( ... ) {
-            delay = - DBL_MAX;
+            delay = -DBL_MAX;
         }
     }
     else {
         delay = -DBL_MAX;
     }
     const char *pStateName;
-    if ( this->curState == statePending ) {
+    if ( m_curState == statePending ) {
         pStateName = "pending";
     }
-    else if ( this->curState == stateActive ) {
-        pStateName = "active";
-    }
-    else if ( this->curState == stateLimbo ) {
+    else if ( m_curState == stateLimbo ) {
         pStateName = "limbo";
     }
     else {
         pStateName = "corrupt";
     }
-    printf ( "timer, state = %s, delay = %f\n",
-        pStateName, delay );
-    if ( level >= 1u && this->pNotify ) {
-        this->pNotify->show ( level - 1u );
+    printf ( "Timer, state = %s, index = %lu, delay = %f\n",
+            pStateName, (unsigned long ) m_index, delay );
+    if ( level >= 1u && m_pNotify ) {
+        m_pNotify->show ( level - 1u );
     }
-}
-
-void timer::operator delete ( void * )
-{
-    // Visual C++ .net appears to require operator delete if
-    // placement operator delete is defined? I smell a ms rat
-    // because if I declare placement new and delete, but
-    // comment out the placement delete definition there are
-    // no undefined symbols.
-    errlogPrintf ( "%s:%d this compiler is confused about placement delete - memory was probably leaked",
-        __FILE__, __LINE__ );
-}
-
-void epicsTimerForC::operator delete ( void * )
-{
-    // Visual C++ .net appears to require operator delete if
-    // placement operator delete is defined? I smell a ms rat
-    // because if I declare placement new and delete, but
-    // comment out the placement delete definition there are
-    // no undefined symbols.
-    errlogPrintf ( "%s:%d this compiler is confused about placement delete - memory was probably leaked",
-        __FILE__, __LINE__ );
 }
 
