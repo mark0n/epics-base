@@ -265,13 +265,13 @@ iocshTest_SRCS += iocshTest.cpp
 TESTS += iocshTest
 TESTFILES += $(wildcard ../iocshTest*.cmd)
 
-TESTPROD_HOST += AllocatorArenaTest 
+TESTPROD_HOST += epicsAllocatorArenaTest 
 epicsAllocatorArenaTest_SRCS += AllocatorArenaTest.cpp
 testHarness_SRCS += AllocatorArenaTest.cpp
-TESTS += AllocatorArenaTest 
+TESTS += epicsAllocatorArenaTest 
 
 TESTPROD_HOST += epicsDemangleTest 
-epicsAllocatorArenaTest_SRCS += epicsDemangleTest.cpp
+epicsDemangleTest_SRCS += epicsDemangleTest.cpp
 testHarness_SRCS += epicsDemangleTest.cpp
 TESTS += epicsDemangleTest 
 

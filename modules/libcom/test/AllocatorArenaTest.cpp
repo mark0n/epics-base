@@ -61,7 +61,7 @@ static void test ( void *arg )
     delay /= RAND_MAX;
     for ( size_t i = 0u; i < M; i++ ) {
         epicsThreadSleep ( delay );
-        TestObj * const p = new () TestObj;
+        TestObj * const p = new TestObj;
         epicsThreadSleep ( delay );
         delete p;
     }
