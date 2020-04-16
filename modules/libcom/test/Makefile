@@ -280,13 +280,13 @@ epicsLoadTest_CPPFLAGS_SHARED_YES = -DBUILDING_SHARED_LIBRARIES
 epicsLoadTest_CPPFLAGS += $(epicsLoadTest_CPPFLAGS_SHARED_$(SHARED_LIBRARIES))
 TESTS += epicsLoadTest
 
-TESTPROD_HOST += AllocatorArenaTest 
+TESTPROD_HOST += epicsAllocatorArenaTest 
 epicsAllocatorArenaTest_SRCS += AllocatorArenaTest.cpp
 testHarness_SRCS += AllocatorArenaTest.cpp
-TESTS += AllocatorArenaTest 
+TESTS += epicsAllocatorArenaTest 
 
 TESTPROD_HOST += epicsDemangleTest 
-epicsAllocatorArenaTest_SRCS += epicsDemangleTest.cpp
+epicsDemangleTest_SRCS += epicsDemangleTest.cpp
 testHarness_SRCS += epicsDemangleTest.cpp
 TESTS += epicsDemangleTest 
 
