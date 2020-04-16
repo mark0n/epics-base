@@ -30,7 +30,7 @@ using namespace atomic;
 
 static const unsigned N = 200u;
 // O chosen to not be even multiple of M
-static const unsigned M = 100u;
+static const unsigned M = 7u;
 static const unsigned O = 13u;
 static size_t iterCount = 0u;
 epicsEvent completion;
