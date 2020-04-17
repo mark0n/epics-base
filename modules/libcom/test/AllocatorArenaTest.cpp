@@ -33,7 +33,7 @@ static const unsigned N = 200u;
 static const unsigned M = 7u;
 static const unsigned O = 13u;
 static size_t iterCount = 0u;
-epicsEvent completion;
+static epicsEvent completion;
 
 struct TestObj {
     int i;
@@ -70,7 +70,7 @@ static void test ( void *arg )
     }
 }
 
-MAIN ( epicsStaticInstanceTest )
+MAIN ( epicsAllocatorArenaTest )
 {
     TestObj :: Allocator aa;
 

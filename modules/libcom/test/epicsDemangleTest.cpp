@@ -35,7 +35,7 @@ public:
 
 static const unsigned N = 200u;
 static size_t iterCount = 0u;
-epicsEvent completion;
+static epicsEvent completion;
 
 void showBasicFunc ( void * )
 {
