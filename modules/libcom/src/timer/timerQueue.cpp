@@ -24,9 +24,9 @@ const double timerQueue :: m_exceptMsgMinPeriod = 60.0 * 5.0; // seconds
 
 timerQueue :: timerQueue ( epicsTimerQueueNotify & notifyIn ) :
     Mutex ( __FILE__, __LINE__ ),
-    m_exceptMsgTimeStamp ( epicsTime :: getCurrent () 
+    m_exceptMsgTimeStamp ( epicsTime :: getMonotonic ()
                                     - m_exceptMsgMinPeriod ),
-    m_notify ( notifyIn ), 
+    m_notify ( notifyIn ),
     m_pExpTmr ( 0 ),  
     m_processThread ( 0 ), 
     m_numTimers ( 0u ),
@@ -47,8 +47,8 @@ timerQueue :: ~timerQueue ()
 void timerQueue ::
     m_printExceptMsg ( const char * pName, const type_info & type )
 {
-    epicsTime cur = epicsTime :: getCurrent ();
-    double delay = cur - m_exceptMsgTimeStamp;
+    const epicsTime cur = epicsTime :: getMonotonic ();
+    const double delay = cur - m_exceptMsgTimeStamp;
     if ( delay >= m_exceptMsgMinPeriod ) {
         m_exceptMsgTimeStamp = cur;
         char date[64];

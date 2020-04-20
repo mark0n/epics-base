@@ -54,7 +54,7 @@ void Timer :: destroy ()
 
 unsigned Timer :: start ( epicsTimerNotify & notify, double delaySeconds )
 {
-    const epicsTime current = epicsTime :: getCurrent ();
+    const epicsTime current = epicsTime :: getMonotonic ();
     const epicsTime exp = current + delaySeconds;
     const Timer :: M_StartReturn sr = m_privateStart ( notify, exp );
     // we are careful to wakeup the timer queue thread after
@@ -122,7 +122,7 @@ Timer :: M_StartReturn
                     m_pNotify ? 
                         typeid ( *m_pNotify ).name () :
                         typeid ( m_pNotify ).name (),
-                    m_exp - epicsTime::getCurrent (),
+                    m_exp - epicsTime::getMonotonic (),
                     this ) );
     return sr;
 }
@@ -214,7 +214,7 @@ void Timer :: show ( unsigned int level ) const
     double delay;
     if ( m_curState == statePending ) {
         try {
-            delay = m_exp - epicsTime::getCurrent();
+            delay = m_exp - epicsTime::getMonotonic ();
         }
         catch ( ... ) {
             delay = -DBL_MAX;

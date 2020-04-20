@@ -349,7 +349,7 @@ inline bool TimerForC :: cancel ()
 
 inline double TimerForC :: getExpireDelay ()
 {
-    return m_pTimer->getExpireDelay ( epicsTime :: getCurrent () );
+    return m_pTimer->getExpireDelay ( epicsTime :: getMonotonic () );
 }
 
 inline void * TimerForC :: operator new  ( size_t sz )

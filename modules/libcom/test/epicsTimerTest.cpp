@@ -137,7 +137,7 @@ inline bool DelayVerify :: cancel ()
 inline unsigned DelayVerify :: start ()
 {
     epicsGuard < epicsMutex > gd ( globalMutex );
-    m_beginStamp = epicsTime::getCurrent ();
+    m_beginStamp = epicsTime :: getMonotonic ();
     m_startCount++;
     return m_timer.start ( *this, m_beginStamp + m_expectedDelay );
 }
@@ -343,7 +343,7 @@ void testCancel ()
         testDiag ( "cancelCount = %u", CancelVerify :: cancelCount );
 
     testDiag ( "starting %d timers", nTimers );
-    epicsTime exp = epicsTime :: getCurrent () + 4.0;
+    const epicsTime exp = epicsTime :: getMonotonic () + 4.0;
     for ( i = 0u; i < nTimers; i++ ) {
         pTimers[i]->start ( exp );
     }
@@ -430,7 +430,7 @@ void testExpireDestroy ()
     testOk1 ( ExpireDestroyVerify :: destroyCount == 0 );
 
     testDiag ( "starting %d timers", nTimers );
-    epicsTime cur = epicsTime :: getCurrent ();
+    const epicsTime cur = epicsTime :: getMonotonic ();
     for ( i = 0u; i < nTimers; i++ ) {
         pTimers[i]->start ( cur );
     }
@@ -523,7 +523,7 @@ void testPeriodic ()
     testOk1 ( timerCount == nTimers );
 
     testDiag ( "starting %d timers", nTimers );
-    epicsTime cur = epicsTime::getCurrent ();
+    const epicsTime cur = epicsTime :: getMonotonic ();
     for ( i = 0u; i < nTimers; i++ ) {
         pTimers[i]->start ( cur );
     }

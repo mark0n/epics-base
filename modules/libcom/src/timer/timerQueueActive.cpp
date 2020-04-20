@@ -58,7 +58,8 @@ void timerQueueActive :: run ()
     Guard guard ( m_queue );
     m_exitFlag = false;
     while ( ! m_terminateFlag ) {
-        double delay = m_queue.process ( guard, epicsTime::getCurrent() );
+        const epicsTime curr = epicsTime :: getMonotonic ();
+        double delay = m_queue.process ( guard, curr );
         {
             GuardRelease release ( guard );
             debugPrintf ( ( "timer thread sleeping for %g sec (max)\n", delay ) );
