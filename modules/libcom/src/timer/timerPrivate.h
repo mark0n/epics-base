@@ -80,6 +80,11 @@ private:
     };
     M_StartReturn m_privateStart ( epicsTimerNotify & notify, 
 	                                const epicsTime & expire );
+    struct M_CancelStatus {
+        bool reschedule;
+        bool wasPending;
+    };
+    M_CancelStatus m_cancelPvt ( Guard & );
     void m_remove ( Guard & guard );
     Timer & operator = ( const Timer & );
     friend class timerQueue;
@@ -121,7 +126,7 @@ public:
     timerQueue ( epicsTimerQueueNotify &notify );
     virtual ~timerQueue ();
     epicsTimer & createTimer ();
-    Timer & createTimerPrivate ();
+    Timer & createTimerImpl ();
     TimerForC & createTimerForC (
         epicsTimerCallback pCallback, void *pArg );
     double process ( const epicsTime & currentTime );
@@ -135,6 +140,7 @@ private:
     epicsTimerQueueNotify & m_notify;
     Timer * m_pExpTmr;
     epicsThreadId m_processThread;
+    size_t m_numTimers;
     bool m_cancelPending;
     static const double m_exceptMsgMinPeriod;
     timerQueue ( const timerQueue & );
