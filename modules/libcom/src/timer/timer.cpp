@@ -34,7 +34,17 @@ Timer :: Timer ( timerQueue & queueIn ) :
 
 Timer :: ~Timer ()
 {
-    this->cancel ();
+    M_CancelStatus cs = { false, false };
+    {
+        Guard guard ( m_queue );
+        cs = m_cancelPvt ( guard );
+        m_queue.m_numTimers--;
+    }
+    // we are careful to wakeup the timer queue thread after
+    // we nolonger hold the lock
+    if ( cs.reschedule ) {
+        m_queue.m_notify.reschedule ();
+    }
 }
 
 void Timer :: destroy () 
@@ -135,47 +145,55 @@ void Timer :: m_remove ( Guard & guard )
 
 bool Timer :: cancel ()
 {
-    bool wasPending = false;
-    bool reschedule = false;
+    M_CancelStatus cs = { false, false };
     {
         Guard guard ( m_queue );
-        if ( m_curState == statePending ) {
-            const epicsTime oldExp = m_queue.m_heap.front ()->m_exp;
-            m_remove ( guard );
-            m_queue.m_cancelPending = ( m_queue.m_pExpTmr == this );
-            if ( m_queue.m_cancelPending ) {
-                if ( m_queue.m_processThread != epicsThreadGetIdSelf() ) {
-                    // 1) make certain timer expire cllback does not run 
-                    // after this cancel method returns
-                    // 2) dont require that lock is applied while calling 
-                    // expire callback 
-                    // 3) assume that timer could be deleted in its 
-                    // expire callback so we dont touch this after lock
-                    // is released
-                    timerQueue & queue = m_queue;
-                    while ( queue.m_cancelPending && 
-                                        queue.m_pExpTmr == this ) {
-                        GuardRelease unguard ( guard );
-                        queue.m_cancelBlockingEvent.wait ();
-                    }
-                    // in case other threads are waiting
-                    queue.m_cancelBlockingEvent.signal ();
-                }
-            }
-            else {
-                wasPending = true;
-                if ( oldExp > m_queue.m_heap.front ()->m_exp ) {
-                    reschedule = true;
-                }
-            }
-        }
+        cs = m_cancelPvt ( guard );
     }
     // we are careful to wakeup the timer queue thread after
     // we nolonger hold the lock
-    if ( reschedule ) {
+    if ( cs.reschedule ) {
         m_queue.m_notify.reschedule ();
     }
-    return wasPending;
+    return cs.wasPending;
+}
+
+Timer :: M_CancelStatus Timer :: m_cancelPvt ( Guard & gd )
+{
+    gd.assertIdenticalMutex ( m_queue );
+    M_CancelStatus cs = { false, false };
+    Guard guard ( m_queue );
+    if ( m_curState == statePending ) {
+        const epicsTime oldExp = m_queue.m_heap.front ()->m_exp;
+        m_remove ( guard );
+        m_queue.m_cancelPending = ( m_queue.m_pExpTmr == this );
+        if ( m_queue.m_cancelPending ) {
+            if ( m_queue.m_processThread != epicsThreadGetIdSelf() ) {
+                // 1) make certain timer expire cllback does not run 
+                // after this cancel method returns
+                // 2) dont require that lock is applied while calling 
+                // expire callback 
+                // 3) assume that timer could be deleted in its 
+                // expire callback so we dont touch this after lock
+                // is released
+                timerQueue & queue = m_queue;
+                while ( queue.m_cancelPending && 
+                                    queue.m_pExpTmr == this ) {
+                    GuardRelease unguard ( guard );
+                    queue.m_cancelBlockingEvent.wait ();
+                }
+                // in case other threads are waiting
+                queue.m_cancelBlockingEvent.signal ();
+            }
+        }
+        else {
+            cs.wasPending = true;
+            if ( oldExp > m_queue.m_heap.front ()->m_exp ) {
+                cs.reschedule = true;
+            }
+        }
+    }
+    return cs;
 }
 
 epicsTimer :: expireInfo Timer :: getExpireInfo () const

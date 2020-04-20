@@ -29,6 +29,7 @@ timerQueue :: timerQueue ( epicsTimerQueueNotify & notifyIn ) :
     m_notify ( notifyIn ), 
     m_pExpTmr ( 0 ),  
     m_processThread ( 0 ), 
+    m_numTimers ( 0u ),
     m_cancelPending ( false )
 {
 }
@@ -226,14 +227,18 @@ void timerQueue :: m_fixChildren ( size_t parentIdx )
     } 
 }
 
-Timer & timerQueue :: createTimerPrivate ()
+Timer & timerQueue :: createTimerImpl ()
 {
+    // better to throw now in contrast with later during start
+    Guard guard ( *this );
+    m_numTimers++;
+    m_heap.reserve ( m_numTimers );
     return * new Timer ( * this );
 }
 
 epicsTimer & timerQueue :: createTimer ()
 {
-    return * new Timer ( * this );
+    return createTimerImpl ();
 }
 
 TimerForC & timerQueue :: createTimerForC ( 

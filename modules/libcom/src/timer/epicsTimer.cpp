@@ -29,7 +29,7 @@ void epicsTimerNotify :: show ( unsigned /* level */ ) const {}
 
 TimerForC :: TimerForC ( timerQueue & queue, epicsTimerCallback const pCB, 
                                                     void * const pPrivate ) :
-    m_pTimer ( & queue.createTimerPrivate () ), 
+    m_pTimer ( & queue.createTimerImpl () ), 
     m_pCallBack ( pCB ), 
     m_pPrivate ( pPrivate )
 {
