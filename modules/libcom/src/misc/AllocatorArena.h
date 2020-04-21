@@ -115,7 +115,7 @@ using std :: bad_alloc;
 
 //
 // S - the allocation size (the size of T)
-// A - the reuired alignment
+// A - the required alignment
 // N - the block size for pool allocation 
 //     (pool allocation size will be approximately S * N)
 //
