@@ -14,13 +14,6 @@
 #ifndef epicsStaticInstanceCD_h
 #define epicsStaticInstanceCD_h
 
-#if ( __GNUC__ * 100 + __GNUC_MINOR__ ) >= 401
-    // any gcc version that has -fno-threadsafe-statics
-    // should be ok
-#   include "epicsStaticInstanceSaneCmplr.h"
-#else // ( __GNUC__ * 100 + __GNUC_MINOR__ ) >= 401
-    // other gcc maybe cant be trusted without more testing
-#   include "epicsStaticInstanceSketchyCmplr.h"
-#endif // ( __GNUC__ * 100 + __GNUC_MINOR__ ) >= 401
+#include "epicsStaticInstanceSaneCmplr.h"
 
 #endif // epicsStaticInstanceCD_h
