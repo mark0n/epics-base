@@ -38,8 +38,6 @@
  */
 #define CXX_PLACEMENT_DELETE
 
-#define USING_BASE_TYPE(B,T) using typename B :: T;
-
 #endif /* __cplusplus */
 
 

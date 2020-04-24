@@ -54,12 +54,6 @@
  */
 #define EPICS_PRINTF_STYLE(f,a) __attribute__((format(__printf__,f,a)))
 
-#if __GNUC__ > 4 || ( __GNUC__ == 4 && __GNUC_MINOR__ >= 8 )
-#   define USING_BASE_TYPE(B,T) using typename B :: T;
-#else
-#   define USING_BASE_TYPE(B,T) typedef typename B :: T T;
-#endif
-
 /*
  * Deprecation marker
  */
