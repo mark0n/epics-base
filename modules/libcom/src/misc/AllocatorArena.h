@@ -33,15 +33,15 @@
 //
 // Be aware that the storage overhead for any type T is sizeof ( T ) plus 
 // sizeof ( void * ), a substantial consideration probably only if small 
-// objects are stored, and storage efficency is more important than 
+// objects are stored, and storage efficiency is more important than
 // performance considerations. Furthermore, storage overhead increases 
 // for C++ compilers predating C++ 11.
 //
 // In this code a contiguous bulk block of storage for N of type T 
 // is template type Rack<S,A,N> where S is the size of T, and A is the 
-// required alignment. The thread-private allocaton occurs when peeling 
+// required alignment. The thread-private allocation occurs when peeling
 // off storage for an individual T from the thread's private Rack. When 
-// the thread's private Rack is exausted, then a new Rack is allocated 
+// the thread's private Rack is exhausted, then a new Rack is allocated
 // from the specified Rack allocator type. Currently two global Rack 
 // allocator implementations are provided. One that uses ordinary global 
 // new/delete, and one that uses a mutex protected global free list 
@@ -54,8 +54,8 @@
 // purify or valgrind might be more effective. Furthermore, when the 
 // allocator _is_ active, and it is a debug build, specialized
 // valgrind macros document with valgrind memory regions owned by this 
-// allocater for which ownership has not yet passed to an end application 
-// so that they do not appear as undesireable noise in valgrind leak 
+// allocator for which ownership has not yet passed to an end application
+// so that they do not appear as undesirable noise in valgrind leak
 // reports.
 //
 
@@ -90,7 +90,7 @@
 #   if defined ( __GNUC__ ) 
 #       define GCC_VERSION_AA \
             (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
-        // perhaps the nios2 cross compiler doesnt properly implement 
+        // perhaps the nios2 cross compiler doesn't properly implement
         // alignment even at gcc 4.8, based on experimental evidence
 #       define ALIGNAS_CMPLR_OK ( GCC_VERSION_AA >= 50000 )
 #   else
@@ -191,7 +191,7 @@ public:
     // construction / destruction of target
 #if __cplusplus >= 201103L  
     template < typename T0, typename ... Args >
-    static void construct ( T0 *, Args && ... ); // depricated in c++ 17
+    static void construct ( T0 *, Args && ... ); // deprecated in c++ 17
 #else
     template < typename T0, typename A0 >
     static void construct ( T0 *, A0 ); 
@@ -319,7 +319,7 @@ private:
 
 //
 // G - the discriminator for the thread private variable group
-//     (proper scaling requires an indepent thread private variable
+//     (proper scaling requires an independent thread private variable
 //      group for each library) any type is allowed and appropriate 
 //      for identifying an independent thread private context
 //
@@ -327,7 +327,7 @@ template < typename G > class AllocCtxGrouped : public AllocCtxCom {};
 
 //
 // G - the discriminator for the thread private variable group
-//     (proper scaling requires an indepent thread private variable
+//     (proper scaling requires an independent thread private variable
 //      group for each library) any type is allowed and appropriate 
 //      for identifying an independent thread private context
 //
@@ -344,7 +344,7 @@ private:
 //
 // T - the allocation type
 // G - the discriminator for the thread private variable group
-//     (proper scaling requires an indepent thread private variable
+//     (proper scaling requires an independent thread private variable
 //      group for each library) any type is allowed and appropriate 
 //      for identifying an independent thread private context
 //
