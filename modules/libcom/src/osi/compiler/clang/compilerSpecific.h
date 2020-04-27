@@ -1,6 +1,4 @@
 /*************************************************************************\
-* Copyright (c) 2020 Triad National Security, as operator of Los Alamos 
-*     National Laboratory
 * Copyright (c) 2008 UChicago Argonne LLC, as Operator of Argonne
 *     National Laboratory.
 * Copyright (c) 2002 The Regents of the University of California, as
@@ -30,8 +28,6 @@
 
 /* Expands to a 'const char*' which describes the name of the current function scope */
 #define EPICS_FUNCTION __PRETTY_FUNCTION__
-
-#define NO_RETURN __attribute__((noreturn))
 
 #ifdef __cplusplus
 

@@ -1,6 +1,4 @@
 /*************************************************************************\
-* Copyright (c) 2020 Triad National Security, as operator of Los Alamos 
-*     National Laboratory
 * Copyright (c) 2008 UChicago Argonne LLC, as Operator of Argonne
 *     National Laboratory.
 * Copyright (c) 2002 The Regents of the University of California, as
@@ -27,9 +25,6 @@
 #define EPICS_ALWAYS_INLINE inline
 
 #ifdef __cplusplus
-
-#define NO_RETURN 
-
 
 /*
  * CXX_PLACEMENT_DELETE - defined if compiler supports placement delete
