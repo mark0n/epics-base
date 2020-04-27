@@ -12,9 +12,7 @@
 #include <exception>
 #include <cstdlib>
 
-#if ( __GNUC__ * 100 + __GNUC_MINOR__ ) >= 300
-#   include <cxxabi.h>
-#endif
+#include <cxxabi.h>
 
 #include "epicsThread.h"
 #include "epicsAtomic.h"
