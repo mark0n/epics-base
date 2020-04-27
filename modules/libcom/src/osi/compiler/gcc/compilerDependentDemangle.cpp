@@ -142,6 +142,13 @@ inline ThreadPrivate * ThreadPrivate :: get ()
     return pPriv;
 }
 
+/**
+ * Transforms a C++ ABI identifier into the original C++ source identifier.
+ * @param pMangledName The name that shall be demangled.
+ * @note This function tries to reduce the number of memory allocations by
+ * reusing a thread-local buffer. If the length of the demangled string exceeds
+ * the buffer size it might reallocate, though.
+ */
 std :: string epicsDemangle ( const char * const pMangledName )
 {
     if ( pMangledName ) {
