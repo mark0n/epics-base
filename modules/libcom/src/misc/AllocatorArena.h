@@ -688,7 +688,7 @@ inline void AllocatorArena < T, G, N, P, TRACE > ::
         AllocatorArena :: deallocate ( pT, 1u );
     }
     else {
-#if __cplusplus >= 201400L
+#ifdef __cpp_sized_deallocation
         :: operator delete ( p, sz );
 #else
         :: operator delete ( p );
