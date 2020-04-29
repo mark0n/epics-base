@@ -39,8 +39,8 @@ Timer :: ~Timer ()
         cs = m_cancelPvt ( guard );
         m_queue.m_numTimers--;
     }
-    // we are careful to wakeup the timer queue thread after
-    // we nolonger hold the lock
+    // we are careful to wake up the timer queue thread after
+    // we no longer hold the lock
     if ( cs.reschedule ) {
         m_queue.m_notify.reschedule ();
     }
@@ -56,8 +56,8 @@ unsigned Timer :: start ( epicsTimerNotify & notify, double delaySeconds )
     const epicsTime current = epicsTime :: getCurrent ();
     const epicsTime exp = current + delaySeconds;
     const Timer :: M_StartReturn sr = m_privateStart ( notify, exp );
-    // we are careful to wakeup the timer queue thread after
-    // we nolonger hold the lock
+    // we are careful to wake up the timer queue thread after
+    // we no longer hold the lock
     if ( sr.resched ) {
         m_queue.m_notify.reschedule ();
     }
@@ -68,8 +68,8 @@ unsigned Timer :: start ( epicsTimerNotify & notify,
                             const epicsTime & expire )
 {
     Timer :: M_StartReturn sr = m_privateStart ( notify, expire );
-    // we are careful to wakeup the timer queue thread after
-    // we nolonger hold the lock
+    // we are careful to wake up the timer queue thread after
+    // we no longer hold the lock
     if ( sr.resched ) {
         m_queue.m_notify.reschedule ();
     }
@@ -150,8 +150,8 @@ bool Timer :: cancel ()
         Guard guard ( m_queue );
         cs = m_cancelPvt ( guard );
     }
-    // we are careful to wakeup the timer queue thread after
-    // we nolonger hold the lock
+    // we are careful to wake up the timer queue thread after
+    // we no longer hold the lock
     if ( cs.reschedule ) {
         m_queue.m_notify.reschedule ();
     }
@@ -169,12 +169,12 @@ Timer :: M_CancelStatus Timer :: m_cancelPvt ( Guard & gd )
         m_queue.m_cancelPending = ( m_queue.m_pExpTmr == this );
         if ( m_queue.m_cancelPending ) {
             if ( m_queue.m_processThread != epicsThreadGetIdSelf() ) {
-                // 1) make certain timer expire cllback does not run 
+                // 1) make certain timer expire callback does not run
                 // after this cancel method returns
-                // 2) dont require that lock is applied while calling 
+                // 2) don't require that lock is applied while calling
                 // expire callback 
                 // 3) assume that timer could be deleted in its 
-                // expire callback so we dont touch this after lock
+                // expire callback so we don't touch this after lock
                 // is released
                 timerQueue & queue = m_queue;
                 while ( queue.m_cancelPending && 
@@ -199,7 +199,7 @@ Timer :: M_CancelStatus Timer :: m_cancelPvt ( Guard & gd )
 epicsTimer :: expireInfo Timer :: getExpireInfo () const
 {
     // taking a lock here guarantees that users will not
-    // see brief intervals when a timer isnt active because
+    // see brief intervals when a timer isn't active because
     // it is is canceled when start is called
     Guard locker ( m_queue );
     if ( m_curState == statePending ) {
