@@ -120,7 +120,7 @@ double DelayVerify :: checkError () const
     double errPercent = 
         100.0 * errMagnitude / m_expectedDelay;
     testOk ( errMagnitude < messageThresh,
-            "%f mS < %f mS, delay = %f s, (%.1f %%)", 
+            "%f.1 ms < %f.1 ms, delay = %f s, (%.1f %%)",
             errMagnitude * 1000.0, 
             messageThresh * 1000.0,
             m_expectedDelay, 
