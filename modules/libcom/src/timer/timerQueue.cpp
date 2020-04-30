@@ -120,7 +120,7 @@ double timerQueue :: process ( Guard & guard,
             GuardRelease unguard ( guard );
             debugPrintf ( ( "%5u expired \"%s\" with error %f sec\n",
                 N++, 
-                typeid ( *pTmptNotify ).name (), 
+                typeid ( *pTmpNotify ).name (), 
                 currentTime - m_pExpTmr->m_exp ) );
             try {
                 expStat = pTmpNotify->expire ( currentTime );
@@ -161,11 +161,9 @@ double timerQueue :: process ( Guard & guard,
             if ( m_pExpTmr->m_pNotify ) {
                 // pNotify was cleared above; if its valid now we 
                 // know that someone has started the timer from 
-                // another thread and that overrides the restart 
+                // another thread, possibly moving its position in 
+                // the heap and that overrides the restart 
                 // parameters from expire
-                if ( ! m_fixParent ( m_pExpTmr->m_index ) ) {
-                    m_fixChildren ( m_pExpTmr->m_index );
-                }
             }
             else if ( expStat.restart() ) {
                 // restart as nec

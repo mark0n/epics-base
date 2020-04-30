@@ -84,21 +84,22 @@ Timer :: M_StartReturn
     Guard locker ( m_queue );
     m_pNotify = & notify;
     if ( m_curState == statePending ) {
-        if ( m_queue.m_pExpTmr == this ) {
-            // new expire time and notify will override 
-            // any restart parameters that may be returned 
-            // from the timer expire callback
-            sr.resched = false;
-            sr.numNew = 1u;
-            return sr;
-        }
-        sr.numNew = 0u;
         const epicsTime oldExp = m_queue.m_heap.front ()->m_exp;
         m_exp = expire;
         if ( ! m_queue.m_fixParent ( m_index ) ) {
             m_queue.m_fixChildren ( m_index );
         }
-        sr.resched = ( oldExp > m_queue.m_heap.front ()->m_exp ); 
+        if ( m_queue.m_pExpTmr == this ) {
+            // new expire time and notify will override 
+            // any restart parameters that may be returned 
+            // from the timer expire callback
+            sr.numNew = 1u;
+            sr.resched = false;
+        }
+        else {
+            sr.numNew = 0u;
+            sr.resched = ( oldExp > m_queue.m_heap.front ()->m_exp ); 
+        }
     }
     else {
         sr.numNew = 1u;
