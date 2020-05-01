@@ -60,7 +60,8 @@ void timerQueueActive :: run ()
         double delay = m_queue.process ( guard, epicsTime::getCurrent() );
         {
             GuardRelease release ( guard );
-            debugPrintf ( ( "timer thread sleeping for %g sec (max)\n", delay ) );
+            debugPrintf ( ( "timer thread sleeping for %g sec (max)\n", 
+                            delay ) );
             m_rescheduleEvent.wait ( delay );
         }
     }
