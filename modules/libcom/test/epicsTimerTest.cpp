@@ -155,7 +155,16 @@ epicsTimerNotify :: expireStatus
     if ( m_iterationsLeft > 1u ) {
         m_iterationsLeft--;
         m_beginStamp = currentTime;
-        return expireStatus ( restart, m_expectedDelay );
+        // test two paths
+        // o start called during timer expire callback
+        // o return restart requested parameters 
+        if ( ( DelayVerify :: expirePendingCount % 2 ) == 0u ) {
+            m_timer.start ( *this, currentTime + m_expectedDelay );
+            return noRestart;
+        }
+        else {
+            return expireStatus ( restart, m_expectedDelay );
+        }
     }
     else {
         return noRestart;
