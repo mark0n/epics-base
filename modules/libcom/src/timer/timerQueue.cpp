@@ -137,13 +137,15 @@ double timerQueue :: process ( Guard & guard,
         // !! The position of a timer in the queue is allowed to change 
         // !! while its timer callback is running. This happens 
         // !! potentially when they reschedule a timer or cancel a
-        // !! timer. However, a small amount of overhead is expended
-        // !! to properly handle this type of change below.
+        // !! timer. A small amount of additional labor is expended
+        // !! to properly handle this type of change below (we
+        // !! test the return from fix_parent and conditionally 
+        // !! call fix_child, instead of calling only fix_child).
         //
         if ( m_cancelPending ) {
             //
-            // only restart if they didnt cancel() the timer
-            // while the call back was running
+            // only restart if they didnt cancel() the currently
+            // expiring timer while its call-back is running
             //
             // 1) if another thread is canceling then cancel() waits for
             // the event below
@@ -160,10 +162,14 @@ double timerQueue :: process ( Guard & guard,
         else {
             if ( m_pExpTmr->m_pNotify ) {
                 // pNotify was cleared above; if its valid now we 
-                // know that someone has started the timer from 
-                // another thread, possibly moving its position in 
-                // the heap and that overrides the restart 
-                // parameters from expire
+                // know that someone has restarted the timer when
+                // its callback is currently running either 
+                // asynchronously from another thread or from 
+                // within the currently running expire callback,
+                // possibly moving its position in the heap. As 
+                // a defined policy either of these situations
+                // overrides any restart request parameters 
+                // returned from expire
             }
             else if ( expStat.restart() ) {
                 // restart as nec
