@@ -19,7 +19,7 @@
 #define epicsTimerPrivate_h
 
 #include <typeinfo>
-#include <vector>
+#include <boost/heap/binomial_heap.hpp>
 
 #include "tsDLList.h"
 #include "epicsTimer.h"
@@ -39,6 +39,16 @@ using std :: type_info;
 
 class Timer;
 class timerQueue;
+
+struct heap_elt;
+
+// The following priority queue based on a heap allows us to find the timer
+// that expires next efficiently (O(1), many heap operations are O(log(n))).
+// We choose a binomial heap since it is the simplest heap implementation
+// that allows us to efficiently restore the partial order of the heap after
+// canceling a timer or modifying an expiration time.
+typedef boost::heap::binomial_heap<heap_elt,
+                                   boost::heap::compare<std::greater<heap_elt> > > prioQ;
 
 bool operator < ( const Timer &, const Timer & );
 bool operator > ( const Timer &, const Timer & );
@@ -71,9 +81,7 @@ private:
     epicsTime m_exp; // experation time
     state m_curState; // current state
     epicsTimerNotify * m_pNotify; // callback
-    size_t m_index;
-    static const size_t m_invalidIndex = 
-			~ static_cast < size_t > ( 0u );
+    prioQ::handle_type m_handle;
     struct M_StartReturn {
         unsigned numNew;
         bool resched;
@@ -92,6 +100,16 @@ private:
     friend bool operator > ( const Timer &, const Timer & );
     friend bool operator <= ( const Timer &, const Timer & );
     friend bool operator >= ( const Timer &, const Timer & );
+};
+
+// Define a heap element that holds the pointer and provides a sensible compare
+// function for use by the priority queue.
+struct heap_elt {
+  heap_elt(Timer * tmr) : m_tmr(tmr) {};
+  Timer * m_tmr;
+  bool operator>(const heap_elt& rhs) const {
+    return m_tmr->getExpireInfo().expireTime > rhs.m_tmr->getExpireInfo().expireTime;
+  }
 };
 
 struct TimerForC : public epicsTimerNotify {
@@ -135,12 +153,12 @@ public:
     void show ( Guard &, unsigned int level ) const;
 private:
     epicsEvent m_cancelBlockingEvent;
-    std :: vector < Timer * > m_heap;
+    prioQ m_pq;
+//     boost::heap::d_ary_heap<timer, compare<std::greater<timer> > > m_pq;
     epicsTime m_exceptMsgTimeStamp;
     epicsTimerQueueNotify & m_notify;
-    Timer * m_pExpTmr;
     epicsThreadId m_processThread;
-    size_t m_numTimers;
+//     size_t m_numTimers;
     bool m_cancelPending;
     static const double m_exceptMsgMinPeriod;
     timerQueue ( const timerQueue & );
@@ -298,28 +316,6 @@ inline bool operator <= ( const Timer & lhs, const Timer & rhs )
 inline bool operator >= ( const Timer & lhs, const Timer & rhs )
 { 
     return ! ( lhs < rhs ); 
-}
-
-inline size_t timerQueue :: m_parent ( const size_t childIdx )
-{
-    return ( childIdx + ( childIdx & 1u ) ) / 2u - 1u;
-}
-
-inline size_t timerQueue :: m_leftChild ( const size_t parentIdx )
-{
-    return ( parentIdx + 1u ) * 2u - 1u;
-}
-
-inline size_t timerQueue :: m_rightChild ( const size_t parentIdx )
-{
-    return ( parentIdx + 1u ) * 2u;
-}
-
-inline void timerQueue :: m_swapEntries ( size_t idx0, size_t idx1 )
-{
-    std :: swap ( m_heap[idx0], m_heap[idx1] );
-    m_heap[idx0]->m_index = idx0;
-    m_heap[idx1]->m_index = idx1;
 }
 
 inline bool timerQueueActive :: sharingOK () const

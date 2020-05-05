@@ -26,8 +26,7 @@
 Timer :: Timer ( timerQueue & queueIn ) :
     m_queue ( queueIn ), 
     m_curState ( stateLimbo ), 
-    m_pNotify ( 0 ),
-    m_index ( m_invalidIndex ) 
+    m_pNotify ( 0 )
 {
 }
 
@@ -37,7 +36,7 @@ Timer :: ~Timer ()
     {
         Guard guard ( m_queue );
         cs = m_cancelPvt ( guard );
-        m_queue.m_numTimers--;
+//         m_queue.m_numTimers--;
     }
     // we are careful to wake up the timer queue thread after
     // we no longer hold the lock
@@ -84,12 +83,10 @@ Timer :: M_StartReturn
     Guard locker ( m_queue );
     m_pNotify = & notify;
     if ( m_curState == statePending ) {
-        const epicsTime oldExp = m_queue.m_heap.front ()->m_exp;
+        const epicsTime oldExp = m_queue.m_pq.top().m_tmr->m_exp;
         m_exp = expire;
-        if ( ! m_queue.m_fixParent ( m_index ) ) {
-            m_queue.m_fixChildren ( m_index );
-        }
-        if ( m_queue.m_pExpTmr == this ) {
+        m_queue.m_pq.update(m_handle); //FIXME: try to optimize by calling increase()/decrease()
+        if ( m_queue.m_pq.top().m_tmr == this ) {
             // new expire time and notify will override 
             // any restart parameters that may be returned 
             // from the timer expire callback
@@ -98,23 +95,21 @@ Timer :: M_StartReturn
         }
         else {
             sr.numNew = 0u;
-            sr.resched = ( oldExp > m_queue.m_heap.front ()->m_exp ); 
+            sr.resched = ( oldExp > m_queue.m_pq.top().m_tmr->m_exp );
         }
     }
     else {
         sr.numNew = 1u;
         m_curState = Timer :: statePending;
-        m_index = m_queue.m_heap.size ();
-        if ( m_index > 0u ) {
-            const epicsTime oldExp = m_queue.m_heap.front ()->m_exp;
+        if ( !m_queue.m_pq.empty() ) {
+            const epicsTime oldExp = m_queue.m_pq.top().m_tmr->m_exp;
             m_exp = expire;
-            m_queue.m_heap.push_back ( this );
-            m_queue.m_fixParent ( m_index );
-            sr.resched = ( oldExp > m_queue.m_heap.front ()->m_exp ); 
+            m_handle = m_queue.m_pq.push( this );
+            sr.resched = ( oldExp > m_queue.m_pq.top().m_tmr->m_exp );
         }
         else {
             m_exp = expire;
-            m_queue.m_heap.push_back ( this );
+            m_handle = m_queue.m_pq.push( this );
             sr.resched = true;
         }
     }
@@ -129,17 +124,8 @@ Timer :: M_StartReturn
 
 void Timer :: m_remove ( Guard & guard )
 {
-    Timer * const pMoved = m_queue.m_heap.back ();
-    m_queue.m_heap.pop_back ();
-    if ( m_index != m_queue.m_heap.size () ) {
-        const size_t oldIndex = m_index;
-        m_queue.m_heap[oldIndex] = pMoved;
-        pMoved->m_index = oldIndex;
-        if ( ! m_queue.m_fixParent ( oldIndex ) ) {
-            m_queue.m_fixChildren ( oldIndex );
-        }
-    }
-    m_index = m_invalidIndex;
+    m_queue.m_pq.erase(m_handle);
+    m_handle = prioQ::handle_type(); // invalidate handle
     m_curState = stateLimbo;
 }
 
@@ -165,7 +151,7 @@ Timer :: M_CancelStatus Timer :: m_cancelPvt ( Guard & gd )
     Guard guard ( m_queue );
     if ( m_curState == statePending ) {
         m_remove ( guard );
-        m_queue.m_cancelPending = ( m_queue.m_pExpTmr == this );
+        m_queue.m_cancelPending = ( m_queue.m_pq.top().m_tmr == this );
         if ( m_queue.m_cancelPending ) {
             if ( m_queue.m_processThread != epicsThreadGetIdSelf() ) {
                 // 1) make certain timer expire callback does not run
@@ -176,7 +162,7 @@ Timer :: M_CancelStatus Timer :: m_cancelPvt ( Guard & gd )
                 // expire callback so we don't touch this after lock
                 // is released
                 while ( m_queue.m_cancelPending &&
-                                    m_queue.m_pExpTmr == this ) {
+                                    m_queue.m_pq.top().m_tmr == this ) {
                     GuardRelease unguard ( guard );
                     m_queue.m_cancelBlockingEvent.wait ();
                 }
@@ -228,8 +214,7 @@ void Timer :: show ( unsigned int level ) const
     else {
         pStateName = "corrupt";
     }
-    printf ( "Timer, state = %s, index = %lu, delay = %f\n",
-            pStateName, (unsigned long ) m_index, delay );
+    printf ( "Timer, state = %s, delay = %f\n", pStateName, delay );
     if ( level >= 1u && m_pNotify ) {
         m_pNotify->show ( level - 1u );
     }
