@@ -17,6 +17,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
+#include <vector>
+#include <algorithm>
 
 #include "epicsTimer.h"
 #include "epicsEvent.h"
@@ -551,9 +554,134 @@ void testPeriodic ()
     queue.release ();
 }
 
+class handler : public epicsTimerNotify
+{
+public:
+  handler(const char* nameIn, epicsTimerQueue& queue) : name(nameIn), timer(queue.createTimer()) {}
+  ~handler() { timer.destroy(); }
+  void start(double delay) {
+    startTime = epicsTime::getMonotonic();
+    timer.start(*this, delay);
+  }
+  void cancel() { timer.cancel(); }
+  expireStatus expire(const epicsTime& currentTime) {
+    expireTime = epicsTime::getMonotonic();
+    expireCount++;
+    return expireStatus(noRestart);
+  }
+  int getExpireCount() const { return expireCount; }
+  double getDelay() const { return expireTime - startTime; }
+private:
+  const std::string name;
+  epicsTimer &timer;
+  int expireCount = 0;
+  epicsTime startTime;
+  epicsTime expireTime;
+};
+
+void testTimerExpires() {
+  testDiag("Timer expires");
+  epicsTimerQueueActive &queue = epicsTimerQueueActive::allocate(false);
+  {
+    handler h1("timer1", queue);
+    const double arbitrary_time { 0.3 };
+    h1.start(arbitrary_time);
+
+    epicsThreadSleep(arbitrary_time + 0.1);
+
+    testOk(h1.getExpireCount() == 1, "timer expired exactly once");
+    double delta_t = h1.getDelay() - arbitrary_time;
+    if (!testOk(std::abs(delta_t) < 1e-3, "timer expired after the expected time (+/-1 ms)")) {
+      testDiag("delta t = %g", delta_t);
+    }
+  } // destroy timer
+  queue.release();
+  epicsThreadSleep(0.1); // FIXME: this line ensures nice ordering of thread starts/shutdown messages in GDB, it can be removed at any time
+}
+
+void testMultipleTimersExpire(std::vector<double> && sleepTime) {
+  epicsTimerQueueActive &queue = epicsTimerQueueActive::allocate(false);
+  {
+    std::vector<handler> hv;
+    hv.reserve(3);
+    for (unsigned i = 0; i < 3; i++) {
+      std::string name("timer" + std::to_string(i));
+      hv.emplace_back(name.c_str(), queue);
+    }
+    for (unsigned i = 0; i < hv.size(); i++) {
+      hv[i].start(sleepTime[i]);
+    }
+
+    epicsThreadSleep(*std::max_element(sleepTime.cbegin(), sleepTime.cend()) + 0.1);
+
+    for (unsigned i = 0; i < hv.size(); i++) {
+      testOk(hv[i].getExpireCount() == 1, "timer expired exactly once");
+      double delta_t = hv[i].getDelay() - sleepTime[i];
+      if (!testOk(std::abs(delta_t) < 1e-3, "timer expired after the expected time (+/-1 ms)")) {
+        testDiag("delta t = %g", delta_t);
+      }
+    }
+  } // destroy timers
+  queue.release();
+  epicsThreadSleep(0.1); // FIXME: this line ensures nice ordering of thread starts/shutdown messages in GDB, it can be removed at any time
+}
+
+void testMultipleTimersExpireFirstTimerExpiresFirst() {
+  testDiag("Multiple timers expire - first timer expires first");
+  testMultipleTimersExpire({ 1.0, 1.2, 1.1 });
+}
+
+void testMultipleTimersExpireLastTimerExpiresFirst() {
+  testDiag("Multiple timers expire - last timer expires first");
+  testMultipleTimersExpire({ 1.1, 1.2, 1.0 });
+}
+
+void testTimerReschedule() {
+  testDiag("Reschedule timer");
+  epicsTimerQueueActive &queue = epicsTimerQueueActive::allocate(false);
+  {
+    handler h1("timer1", queue);
+    double arbitrary_time { 10.0 };
+    h1.start(arbitrary_time);
+    arbitrary_time = 0.3;
+    h1.start(arbitrary_time);
+
+    epicsThreadSleep(arbitrary_time + 0.1);
+
+    testOk(h1.getExpireCount() == 1, "timer expired exactly once");
+    double delta_t = h1.getDelay() - arbitrary_time;
+    if (!testOk(std::abs(delta_t) < 1e-3, "timer expired after the expected time (+/-1 ms)")) {
+      testDiag("delta t = %g", delta_t);
+    }
+  } // destroy timer
+  queue.release();
+  epicsThreadSleep(0.1); // FIXME: this line ensures nice ordering of thread starts/shutdown messages in GDB, it can be removed at any time
+}
+
+void testCancelTimer() {
+  testDiag("Cancel timer");
+  epicsTimerQueueActive &queue = epicsTimerQueueActive::allocate(false);
+  {
+    handler h1("timer1", queue);
+    h1.start(1.0);
+    h1.cancel();
+
+    epicsThreadSleep(2.0);
+
+    testOk(h1.getExpireCount() == 0, "timer expired exactly 0 times");
+  } // destroy timer
+  queue.release();
+  epicsThreadSleep(0.1); // FIXME: this line ensures nice ordering of thread starts/shutdown messages in GDB, it can be removed at any time
+}
+
 MAIN ( epicsTimerTest )
 {
-    testPlan(19+nAccuracyTimers);
+    testPlan(36+nAccuracyTimers);
+    testTimerExpires();
+    testMultipleTimersExpireFirstTimerExpiresFirst();
+    testMultipleTimersExpireLastTimerExpiresFirst();
+    testTimerReschedule();
+    testCancelTimer();
     testAccuracy ();
     testCancel ();
     testExpireDestroy ();
