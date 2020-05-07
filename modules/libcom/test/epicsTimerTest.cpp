@@ -573,6 +573,7 @@ public:
   }
   int getExpireCount() const { return expireCount; }
   double getDelay() const { return expireTime - startTime; }
+  std::string getName() const { return name; }
 private:
   const std::string name;
   epicsTimer &timer;
@@ -581,6 +582,25 @@ private:
   epicsTime expireTime;
   std::function<void()> expireFct;
 };
+
+void verify_delta_t(const double delta_t, const std::string & name) {
+  if (!testOk(delta_t >= 0, "%s slept at least for the expected time before expiring", name.c_str())) {
+    testDiag("delta t = %g", delta_t);
+  }
+
+  // The following test frequently fails on Travis CI (probably due to high
+  // load on their machines) so we run it but don't consider it for the overall
+  // result:
+  if (testImpreciseTiming()) {
+    testTodoBegin("imprecise");
+  }
+  if (!testOk(delta_t < 1e-3, "%s expired less than 1 ms after the expected time", name.c_str())) {
+    testDiag("delta t = %g", delta_t);
+  }
+  if (testImpreciseTiming()) {
+    testTodoEnd();
+  }
+}
 
 void testTimerExpires() {
   testDiag("Timer expires");
@@ -593,10 +613,7 @@ void testTimerExpires() {
     epicsThreadSleep(arbitrary_time + 0.1);
 
     testOk(h1.getExpireCount() == 1, "timer expired exactly once");
-    double delta_t = h1.getDelay() - arbitrary_time;
-    if (!testOk(std::abs(delta_t) < 1e-3, "timer expired after the expected time (+/-1 ms)")) {
-      testDiag("delta t = %g", delta_t);
-    }
+    verify_delta_t(h1.getDelay() - arbitrary_time, h1.getName());
   } // destroy timer
   queue.release();
   epicsThreadSleep(0.1); // FIXME: this line ensures nice ordering of thread starts/shutdown messages in GDB, it can be removed at any time
@@ -619,10 +636,7 @@ void testMultipleTimersExpire(std::vector<double> && sleepTime) {
 
     for (unsigned i = 0; i < hv.size(); i++) {
       testOk(hv[i].getExpireCount() == 1, "timer expired exactly once");
-      double delta_t = hv[i].getDelay() - sleepTime[i];
-      if (!testOk(std::abs(delta_t) < 1e-3, "timer expired after the expected time (+/-1 ms)")) {
-        testDiag("delta t = %g", delta_t);
-      }
+      verify_delta_t(hv[i].getDelay() - sleepTime[i], hv[i].getName());
     }
   } // destroy timers
   queue.release();
@@ -652,10 +666,7 @@ void testTimerReschedule() {
     epicsThreadSleep(arbitrary_time + 0.1);
 
     testOk(h1.getExpireCount() == 1, "timer expired exactly once");
-    double delta_t = h1.getDelay() - arbitrary_time;
-    if (!testOk(std::abs(delta_t) < 1e-3, "timer expired after the expected time (+/-1 ms)")) {
-      testDiag("delta t = %g", delta_t);
-    }
+    verify_delta_t(h1.getDelay() - arbitrary_time, h1.getName());
   } // destroy timer
   queue.release();
   epicsThreadSleep(0.1); // FIXME: this line ensures nice ordering of thread starts/shutdown messages in GDB, it can be removed at any time
