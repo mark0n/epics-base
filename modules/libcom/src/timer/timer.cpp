@@ -145,7 +145,7 @@ void Timer :: m_remove ( Guard & guard )
 
 bool Timer :: cancel ()
 {
-    M_CancelStatus cs = { false, false };
+    M_CancelStatus cs;
     {
         Guard guard ( m_queue );
         cs = m_cancelPvt ( guard );
@@ -164,7 +164,6 @@ Timer :: M_CancelStatus Timer :: m_cancelPvt ( Guard & gd )
     M_CancelStatus cs = { false, false };
     Guard guard ( m_queue );
     if ( m_curState == statePending ) {
-        const epicsTime oldExp = m_queue.m_heap.front ()->m_exp;
         m_remove ( guard );
         m_queue.m_cancelPending = ( m_queue.m_pExpTmr == this );
         if ( m_queue.m_cancelPending ) {
@@ -176,21 +175,17 @@ Timer :: M_CancelStatus Timer :: m_cancelPvt ( Guard & gd )
                 // 3) assume that timer could be deleted in its 
                 // expire callback so we don't touch this after lock
                 // is released
-                timerQueue & queue = m_queue;
-                while ( queue.m_cancelPending && 
-                                    queue.m_pExpTmr == this ) {
+                while ( m_queue.m_cancelPending &&
+                                    m_queue.m_pExpTmr == this ) {
                     GuardRelease unguard ( guard );
-                    queue.m_cancelBlockingEvent.wait ();
+                    m_queue.m_cancelBlockingEvent.wait ();
                 }
                 // in case other threads are waiting
-                queue.m_cancelBlockingEvent.signal ();
+                m_queue.m_cancelBlockingEvent.signal ();
             }
         }
         else {
             cs.wasPending = true;
-            if ( oldExp > m_queue.m_heap.front ()->m_exp ) {
-                cs.reschedule = true;
-            }
         }
     }
     return cs;
