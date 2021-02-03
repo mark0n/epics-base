@@ -145,7 +145,7 @@ void Timer :: m_remove ( Guard & guard )
 
 bool Timer :: cancel ()
 {
-    M_CancelStatus cs = { false, false };
+    M_CancelStatus cs;
     {
         Guard guard ( m_queue );
         cs = m_cancelPvt ( guard );
@@ -164,7 +164,6 @@ Timer :: M_CancelStatus Timer :: m_cancelPvt ( Guard & gd )
     M_CancelStatus cs = { false, false };
     Guard guard ( m_queue );
     if ( m_curState == statePending ) {
-        const epicsTime oldExp = m_queue.m_heap.front ()->m_exp;
         m_remove ( guard );
         m_queue.m_cancelPending = ( m_queue.m_pExpTmr == this );
         if ( m_queue.m_cancelPending ) {
@@ -188,9 +187,6 @@ Timer :: M_CancelStatus Timer :: m_cancelPvt ( Guard & gd )
         }
         else {
             cs.wasPending = true;
-            if ( oldExp > m_queue.m_heap.front ()->m_exp ) {
-                cs.reschedule = true;
-            }
         }
     }
     return cs;
