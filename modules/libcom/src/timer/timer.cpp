@@ -150,8 +150,8 @@ Timer :: M_CancelStatus Timer :: m_cancelPvt ( Guard & gd )
     M_CancelStatus cs = { false, false };
     Guard guard ( m_queue );
     if ( m_curState == statePending ) {
-        m_remove ( guard );
         m_queue.m_cancelPending = ( m_queue.m_pq.top().m_tmr == this );
+        m_remove ( guard );
         if ( m_queue.m_cancelPending ) {
             if ( m_queue.m_processThread != epicsThreadGetIdSelf() ) {
                 // 1) make certain timer expire callback does not run
@@ -161,11 +161,11 @@ Timer :: M_CancelStatus Timer :: m_cancelPvt ( Guard & gd )
                 // 3) assume that timer could be deleted in its 
                 // expire callback so we don't touch this after lock
                 // is released
-                while ( m_queue.m_cancelPending &&
-                                    m_queue.m_pq.top().m_tmr == this ) {
-                    GuardRelease unguard ( guard );
-                    m_queue.m_cancelBlockingEvent.wait ();
-                }
+//                 while ( m_queue.m_cancelPending &&
+//                                     m_queue.m_pq.top().m_tmr == this ) {
+//                     GuardRelease unguard ( guard );
+//                     m_queue.m_cancelBlockingEvent.wait ();
+//                 }
                 // in case other threads are waiting
                 m_queue.m_cancelBlockingEvent.signal ();
             }
