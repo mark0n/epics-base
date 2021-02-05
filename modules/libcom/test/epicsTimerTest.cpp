@@ -20,6 +20,8 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <functional>
+#include <atomic>
 
 #include "epicsTimer.h"
 #include "epicsEvent.h"
@@ -557,7 +559,7 @@ void testPeriodic ()
 class handler : public epicsTimerNotify
 {
 public:
-  handler(const char* nameIn, epicsTimerQueue& queue) : name(nameIn), timer(queue.createTimer()) {}
+  handler(const char* nameIn, epicsTimerQueue& queue, std::function<void()> expireFctIn = [] {}) : name(nameIn), timer(queue.createTimer()), expireFct(expireFctIn) {}
   ~handler() { timer.destroy(); }
   void start(double delay) {
     startTime = epicsTime::getMonotonic();
@@ -577,6 +579,7 @@ private:
   int expireCount = 0;
   epicsTime startTime;
   epicsTime expireTime;
+  std::function<void()> expireFct;
 };
 
 void testTimerExpires() {
@@ -674,6 +677,31 @@ void testCancelTimer() {
   epicsThreadSleep(0.1); // FIXME: this line ensures nice ordering of thread starts/shutdown messages in GDB, it can be removed at any time
 }
 
+void testCancelTimerWhileExpireIsRunning() {
+  testDiag("Cancel timer while expire handler is running");
+  epicsTimerQueueActive &queue = epicsTimerQueueActive::allocate(false);
+  {
+    epicsEvent expireStarted;
+    std::atomic_flag endOfExpireReached = ATOMIC_FLAG_INIT;
+    auto longRunningFct = [&] {
+      expireStarted.trigger();
+      epicsThreadSleep(10.0);
+      endOfExpireReached.test_and_set();
+    };
+    handler h1("timer1", queue, longRunningFct );
+    h1.start(0.0);
+    expireStarted.wait(); // wait for expire() to be called
+
+    h1.cancel(); // cancel while expire() is running
+    bool cancelBlocked = endOfExpireReached.test_and_set();
+
+    testOk(h1.getExpireCount() == 1, "timer expired exactly once");
+    testOk(cancelBlocked, "cancel() blocks until all expire() calls are finished");
+  } // destroy timer
+  queue.release();
+  epicsThreadSleep(0.1); // FIXME: this line ensures nice ordering of thread starts/shutdown messages in GDB, it can be removed at any time
+}
+
 MAIN ( epicsTimerTest )
 {
     testPlan(36+nAccuracyTimers);
@@ -682,6 +710,7 @@ MAIN ( epicsTimerTest )
     testMultipleTimersExpireLastTimerExpiresFirst();
     testTimerReschedule();
     testCancelTimer();
+    testCancelTimerWhileExpireIsRunning();
     testAccuracy ();
     testCancel ();
     testExpireDestroy ();
