@@ -41,6 +41,8 @@
 #include "epicsExit.h"
 #include "epicsAtomic.h"
 
+extern "C" {
+
 LIBCOM_API void epicsThreadShowInfo(epicsThreadOSD *pthreadInfo, unsigned int level);
 LIBCOM_API void osdThreadHooksRun(epicsThreadId id);
 LIBCOM_API void osdThreadHooksRunMain(epicsThreadId id);
@@ -160,7 +162,7 @@ static epicsThreadOSD * create_threadInfo(const char *name)
     epicsThreadOSD *pthreadInfo;
 
     /* sizeof(epicsThreadOSD) includes one byte for the '\0' */
-    pthreadInfo = calloc(1,sizeof(*pthreadInfo) + strlen(name));
+    pthreadInfo = static_cast<epicsThreadOSD *>(calloc(1,sizeof(*pthreadInfo) + strlen(name)));
     if(!pthreadInfo)
         return NULL;
     pthreadInfo->suspendEvent = epicsEventCreate(epicsEventEmpty);
@@ -243,10 +245,9 @@ struct sched_param  schedp;
 static void*
 find_pri_range(void *arg)
 {
-priAvailable *prm = arg;
+priAvailable *prm = static_cast<priAvailable *>(arg);
 int           min = sched_get_priority_min(prm->policy);
 int           max = sched_get_priority_max(prm->policy);
-int           low, try;
 
     if ( -1 == min || -1 == max ) {
         /* something is very wrong; maintain old behavior
@@ -281,14 +282,14 @@ int           low, try;
      * by resource limitations (but that is ignored
      * by sched_get_priority_max() [linux]).
      */
-    low = min;
+    int low = min;
 
     while ( low < max ) {
-        try = (max+low)/2;
-        if ( try_pri(try, prm->policy) ) {
-            max = try;
+        int try_p = (max+low)/2;
+        if ( try_pri(try_p, prm->policy) ) {
+            max = try_p;
         } else {
-            low = try + 1;
+            low = try_p + 1;
         }
     }
 
@@ -332,7 +333,7 @@ static void once(void)
     checkStatusOnceQuit(status,"osdPosixMutexInit","epicsThreadInit");
     status = osdPosixMutexInit(&listLock,PTHREAD_MUTEX_DEFAULT);
     checkStatusOnceQuit(status,"osdPosixMutexInit","epicsThreadInit");
-    pcommonAttr = calloc(1,sizeof(commonAttr));
+    pcommonAttr = static_cast<commonAttr *>(calloc(1,sizeof(commonAttr)));
     if(!pcommonAttr) checkStatusOnceQuit(errno,"calloc","epicsThreadInit");
     status = pthread_attr_init(&pcommonAttr->attr);
     checkStatusOnceQuit(status,"pthread_attr_init","epicsThreadInit");
@@ -545,7 +546,7 @@ epicsThreadCreateOpt(const char * name,
     }
     stackSize = opts->stackSize;
     if (stackSize <= epicsThreadStackBig)
-        stackSize = epicsThreadGetStackSize(stackSize);
+        stackSize = epicsThreadGetStackSize(static_cast<epicsThreadStackSizeClass>(stackSize));
 
     sigfillset(&blockAllSig);
     pthread_sigmask(SIG_SETMASK, &blockAllSig, &oldSig);
@@ -939,7 +940,7 @@ LIBCOM_API epicsThreadPrivateId epicsStdCall epicsThreadPrivateCreate(void)
     int status;
 
     epicsThreadInit();
-    key = calloc(1,sizeof(pthread_key_t));
+    key = static_cast<pthread_key_t *>(calloc(1,sizeof(pthread_key_t)));
     if(!key)
         return NULL;
     status = pthread_key_create(key,0);
@@ -1004,3 +1005,5 @@ LIBCOM_API int epicsThreadGetCPUs(void)
 #endif
     return 1;
 }
+
+} // extern "C"

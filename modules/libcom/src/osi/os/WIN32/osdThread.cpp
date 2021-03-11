@@ -34,6 +34,8 @@
 #include "epicsExit.h"
 #include "epicsAtomic.h"
 
+extern "C" {
+
 LIBCOM_API void osdThreadHooksRun(epicsThreadId id);
 
 void setThreadName ( DWORD dwThreadID, LPCSTR szThreadName );
@@ -487,7 +489,8 @@ static win32ThreadParam * epicsThreadParmCreate ( const char *pName )
 {
     win32ThreadParam *pParmWIN32;
 
-    pParmWIN32 = calloc ( 1, sizeof ( *pParmWIN32 ) + strlen ( pName ) + 1 );
+    pParmWIN32 = static_cast<win32ThreadParam *>(calloc ( 1,
+                 sizeof ( *pParmWIN32 ) + strlen ( pName ) + 1 ));
     if ( pParmWIN32  ) {
         pParmWIN32->pName = (char *) ( pParmWIN32 + 1 );
         strcpy ( pParmWIN32->pName, pName );
@@ -568,7 +571,7 @@ epicsThreadId epicsThreadCreateOpt (
     }
     stackSize = opts->stackSize;
     if (stackSize <= epicsThreadStackBig)
-        stackSize = epicsThreadGetStackSize(stackSize);
+        stackSize = epicsThreadGetStackSize(static_cast<epicsThreadStackSizeClass>(stackSize));
 
     pParmWIN32 = epicsThreadParmCreate ( pName );
     if ( pParmWIN32 == 0 ) {
@@ -1136,3 +1139,5 @@ void testPriorityMapping ()
     return 0;
 }
 #endif
+
+} // extern "C"
