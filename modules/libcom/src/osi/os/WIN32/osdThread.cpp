@@ -24,6 +24,8 @@
 #endif
 #include <windows.h>
 #include <process.h> /* for _endthread() etc */
+#include <chrono>
+#include <thread>
 
 #include "epicsStdio.h"
 #include "libComAPI.h"
@@ -785,6 +787,12 @@ LIBCOM_API int epicsStdCall epicsThreadIsSuspended ( epicsThreadId id )
  */
 LIBCOM_API void epicsStdCall epicsThreadSleep ( double seconds )
 {
+#if __cplusplus >= 201103L
+#pragma message("Using std::this_thread::sleep_for()")
+    auto duration = std::chrono::duration<double>(seconds);
+    std::this_thread::sleep_for(duration);
+#else
+#pragma message("Using Sleep()")
     static const unsigned mSecPerSec = 1000;
     DWORD milliSecDelay;
 
@@ -798,6 +806,7 @@ LIBCOM_API void epicsStdCall epicsThreadSleep ( double seconds )
         milliSecDelay = 0u;
     }
     Sleep ( milliSecDelay );
+#endif
 }
 
 /*

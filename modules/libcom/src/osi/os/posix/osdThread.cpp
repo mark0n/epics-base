@@ -23,6 +23,8 @@
 #include <signal.h>
 #include <sched.h>
 #include <unistd.h>
+#include <chrono>
+#include <thread>
 
 #if defined(_POSIX_MEMLOCK) && _POSIX_MEMLOCK > 0
 #include <sys/mman.h>
@@ -792,6 +794,12 @@ LIBCOM_API int epicsStdCall epicsThreadIsSuspended(epicsThreadId pthreadInfo) {
 
 LIBCOM_API void epicsStdCall epicsThreadSleep(double seconds)
 {
+#if __cplusplus >= 201103L
+#warning "Using std::this_thread::sleep_for()"
+    auto duration = std::chrono::duration<double>(seconds);
+    std::this_thread::sleep_for(duration);
+#else
+#warning "Using nanosleep()"
     struct timespec delayTime;
     struct timespec remainingTime;
     double nanoseconds;
@@ -808,6 +816,7 @@ LIBCOM_API void epicsStdCall epicsThreadSleep(double seconds)
     while (nanosleep(&delayTime, &remainingTime) == -1 &&
            errno == EINTR)
         delayTime = remainingTime;
+#endif
 }
 
 LIBCOM_API epicsThreadId epicsStdCall epicsThreadGetIdSelf(void) {
